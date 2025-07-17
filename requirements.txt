@@ -7,3 +7,4 @@ plotly
 mpld3
 rdkit-pypi
 scikit-learn
+Pillow
