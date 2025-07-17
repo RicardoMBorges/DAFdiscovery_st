@@ -1,19 +1,29 @@
-# 🎈 Blank app template
+# DAFdiscovery App
 
-A simple Streamlit app template for you to modify!
+**Análise Integrada de NMR, MS e Bioatividade via STOCSY**
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+Aplicação interativa desenvolvida em **Streamlit** para análise multivariada de dados de **RMN (NMR)**, **Espectrometria de Massas (MS)** e **Bioatividade**, utilizando o método **STOCSY (Statistical Total Correlation Spectroscopy)**.
 
-### How to run it on your own machine
+## Funcionalidades
 
-1. Install the requirements
+- Upload de dados e metadados (`.csv`)
+- Integração automática dos dados: `NMR + MS + BioActivity`
+- Execução de STOCSY com diferentes modelos de correlação (linear, sigmoidal, etc.)
+- Seleção de drivers automáticos (bioatividade) ou manuais (ppm ou índice MS)
+- Visualizações interativas com Plotly e mpld3
+- Exportação de resultados em PDF, HTML e CSV
 
-   ```
-   $ pip install -r requirements.txt
-   ```
+## Instalação
 
-2. Run the app
+Clone o repositório e instale as dependências:
 
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+```bash
+git clone https://github.com/SEU_USUARIO/DAFdiscovery-App.git
+cd DAFdiscovery-App
+pip install -r requirements.txt
+```
+
+## Como executar
+```bash
+streamlit run app.py
+```
