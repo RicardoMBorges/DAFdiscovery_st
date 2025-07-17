@@ -629,7 +629,7 @@ if metadata_file:
             st.subheader("🧪 NMR Preview")
 
             ppm = nmr_data[nmr_data.columns[0]]
-            st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
+            #st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
             fig = go.Figure()
             for col in nmr_data.columns[1:]:
                 fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=col, opacity=0.5))
@@ -645,13 +645,13 @@ if metadata_file:
         ms_data_file = st.file_uploader("Upload MS data CSV", type="csv")
         if ms_data_file:
             ms_data = pd.read_csv(ms_data_file)
-            st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
+            #st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
 
     if "BioAct" in data_in_use:
         bio_data_file = st.file_uploader("Upload BioActivity data CSV", type="csv")
         if bio_data_file:
             bio_data = pd.read_csv(bio_data_file)
-            st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
+            #st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
 
     # --- Merge and STOCSY ---
     if st.button("▶️ Run Merge and STOCSY"):
