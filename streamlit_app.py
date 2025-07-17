@@ -561,7 +561,9 @@ st.set_page_config(layout="wide")
 st.title("🔬 DAFdiscovery: NMR–MS–BioActivity Integration")
 
 # Load the logo
-logo = Image.open("static/dafDISCOVERY_icon.png")
+import os
+logo_path = os.path.join(os.path.dirname(__file__), "static", "dafDISCOVERY_icon.png")
+logo = Image.open(logo_path)
 
 
 # PayPal donate button
