@@ -182,11 +182,6 @@ def STOCSY(target, X, rt_values, mode="linear"):
 # === Original dafdiscovery_process.py functions (cleaned) ===
 
 """
-#DAFdiscovery Process Pipeline
-
-#Modular script to analyze NMR, MS, and BioActivity data
-#and perform STOCSY and structured correlation analysis.
-
 Author: Ricardo M. Borges (and collaborators)
 License: MIT
 """
