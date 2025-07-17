@@ -512,10 +512,6 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
 # app.py
 
 # To run:
-'''
-pip install -r requirements.txt
-streamlit run app.py
-'''
 
 # ===== Auto-installer for most packages =====
 import subprocess
