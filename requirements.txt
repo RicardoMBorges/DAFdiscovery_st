@@ -1,1 +1,9 @@
 streamlit
+numpy
+pandas
+matplotlib
+scipy
+plotly
+mpld3
+rdkit-pypi
+scikit-learn
