@@ -562,8 +562,14 @@ st.title("🔬 DAFdiscovery: NMR–MS–BioActivity Integration")
 
 # Load the logo
 import os
+from PIL import Image
+
 logo_path = os.path.join(os.path.dirname(__file__), "static", "dafDISCOVERY_icon.png")
-logo = Image.open(logo_path)
+
+if os.path.exists(logo_path):
+    logo = Image.open(logo_path)
+else:
+    print("Arquivo de logo não encontrado:", logo_path)
 
 
 # PayPal donate button
