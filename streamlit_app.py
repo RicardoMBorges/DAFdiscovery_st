@@ -567,6 +567,16 @@ else:
 st.markdown("""
 <hr>
 <center>
+<p>TUTORIAL:</p>
+<a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
+</a>
+</center>
+""", unsafe_allow_html=True)
+
+# PayPal TUTORIAL button
+st.markdown("""
+<hr>
+<center>
 <p>To support the app development:</p>
 <a href="https://www.paypal.com/donate/?business=2FYTFNDV4F2D4&no_recurring=0&item_name=Support+with+%245+→+Send+receipt+to+tlc2chrom.app@gmail.com+with+your+login+email+→+Access+within+24h!&currency_code=USD" target="_blank">
     <img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif" alt="Donate with PayPal button" border="0">
