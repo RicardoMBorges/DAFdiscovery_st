@@ -574,6 +574,7 @@ st.markdown("""
 </center>
 """, unsafe_allow_html=True)
 
+# Citation
 st.markdown("""
 📖 **Please do CITE:**  
 Borges RM, das Neves Costa F, Chagas FO, *et al.*  
@@ -582,14 +583,17 @@ Borges RM, das Neves Costa F, Chagas FO, *et al.*
 [https://doi.org/10.1002/pca.3178](https://doi.org/10.1002/pca.3178)
 """)
 
+
 st.markdown("""
 📖 **Check also our tool to convert TLC into chromatograms:**  
 Borges RM, 
 ** [TLC2Chrom](https://tlc2chrom.streamlit.app/)
 """)
 
+
 # Display the logo in the sidebar or header
 st.image(logo, width=250)
+
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
