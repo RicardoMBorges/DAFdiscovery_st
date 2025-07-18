@@ -17,8 +17,10 @@ Prepare your input files as follows:
 | Bioactivity    | `.csv`   | Rows = bioassays, columns = samples |
 | Metadata (optional) | `.csv` | Annotations about the samples (name, group, class, etc.) |
 
-> Or any combination of two of those: NMR + MS; NMR + BioAct; MS + BioAct (this one is probably the most common use for Natural Products).
+> ⚠️ Or any combination of two of those: NMR + MS; NMR + BioAct; MS + BioAct (this one is probably the most common use for Natural Products).
+ 
 > ⚠️ Column names in all datasets must match exactly (they represent sample IDs).
+
 > ⚠️ The metadata.csv file must: (1) be comma-separated files; (2) have as columns: "Samples"; "NMR_filename" if you have NMR; "MS_filename" if you have MS; "BioAct_filename" if you have BioActivity results. And the strings must contain the same text as their filename counterparts in the NMR.csv file, the MS.csv file, or the BioAct.csv file.
 
 ---
