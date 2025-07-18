@@ -183,7 +183,7 @@ def STOCSY(target, X, rt_values, mode="linear"):
 
 """
 Author: Ricardo M. Borges (and collaborators)
-License: MIT
+ | License: MIT
 """
 
 # === Dependencies ===
