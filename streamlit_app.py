@@ -549,7 +549,7 @@ for key in ["merged_df", "axis", "msinfo", "corr", "covar", "msinfo_corr"]:
         st.session_state[key] = None
 
 st.set_page_config(layout="wide")
-st.title("🔬 DAFdiscovery: NMR–MS–BioActivity Integration")
+st.title("📊 DAFdiscovery: NMR–MS–BioActivity Integration")
 
 # Load the logo
 import os
