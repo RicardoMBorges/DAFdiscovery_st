@@ -23,7 +23,7 @@ Prepare your input files as follows:
 
 ---
 
-## 🚀 How to Use DAFdiscovery
+## How to Use DAFdiscovery
 
 ### 1. Launch the app
 
@@ -77,12 +77,12 @@ You can apply different correlation transformations:
 You can download:
 
 - 📄 Correlation table (`.csv`)
-- 🖼️ Plots in `.pdf` and interactive `.html` formats
-- 📊 Interactive figures (with hover support for MS/NMR info)
+- Plots in `.pdf` and interactive `.html` formats
+- Interactive figures (with hover support for MS/NMR info)
 
 ---
 
-## 🧪 Example Workflow
+## Example Workflow
 
 You have:
 
@@ -91,7 +91,7 @@ You have:
 
 You want to find which NMR signals correlate with the observed bioactivity.
 
-🔍 The app will:
+The app will:
 
 1. Calculate correlations between NMR signals and bioactivity values
 2. Display a STOCSY-style NMR plot with color-coded correlations
@@ -109,6 +109,10 @@ Yes. You can choose any specific ppm value as the driver.
 
 **Can I use MS as a driver?**  
 Yes. Choose any m/z value as the driver.
+
+
+**How can I choose the BioActivity as a driver?**  
+You don´t. If you have BioActivity as part of the imported information in your metadata, it will calculate the correlations from the BioAct "signal" into the NMR and/or MS data.
 
 **Does it work with PCA or PLS-DA results?**  
 STOCSY is an independent analysis but exported results can complement PCA or PLS-DA interpretations.
