@@ -125,19 +125,7 @@ STOCSY is an independent analysis but exported results can complement PCA or PLS
 
 DAFdiscovery is developed and maintained by Ricardo M. Borges and collaborators as part of research in natural products chemistry, metabolomics, and analytical spectroscopy.
 
-📧 Contact: [ricardo.borges@ufrj.br](mailto:ricardo.borges@ufrj.br)  
-🌱 Linked to IPPN-UFRJ and LabMAS
+📧 Contact: [ricardo_mborges@ufrj.br](mailto:ricardo_mborges@ufrj.br)  
+🌱 Linked to IPPN-UFRJ
 
 ---
-
-## 🧬 Contributing
-
-Want to improve the app or report an issue?
-
-1. Fork this repository
-2. Create a branch (`feature/your-feature-name`)
-3. Submit a pull request with a clear description
-
----
-
-🧠 *Open science for data-driven discovery.*
