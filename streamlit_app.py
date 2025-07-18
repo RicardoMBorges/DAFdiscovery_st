@@ -578,9 +578,9 @@ st.markdown("""
 st.markdown("""
 <hr>
 <center>
-<p><strong>Need help?</strong> Read the full step-by-step guide:</p>
+<p><strong>Need help?</strong> Read the tutorial:</p>
 <a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
-    <img src="https://img.shields.io/badge/📘%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
+    <img src="https://img.shields.io/badge/%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
 </a>
 </center>
 """, unsafe_allow_html=True)
