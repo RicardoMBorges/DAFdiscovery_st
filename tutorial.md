@@ -39,6 +39,11 @@ Open the web app in your browser:
 - **Bioactivity Data**: upload your `.csv` file with bioassay results
 - (Optional) **Metadata**: upload your `.csv` file with sample annotations
 
+### 2.A. Mock Data
+👉 [mock data available here.](https://zenodo.org/records/16166855)
+
+ 
+ 
 > 📌 All sample columns must be named identically across all files.
 
 ---
