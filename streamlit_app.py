@@ -176,14 +176,70 @@ def STOCSY(target, X, rt_values, mode="linear"):
     plt.show()
     return corr, covar, fig
 
+# Função para exibir o scatter plot de MS STOCSY
+import plotly.express as px
 
+def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
+    """
+    Display interactive Plotly scatter plot for MS STOCSY correlation results.
 
+    Parameters
+    ----------
+    msinfo_corr : pd.DataFrame
+        Correlation and covariance information merged with MS feature table.
+    label : str
+        Suffix used in correlation column (e.g., 'BioAct', '2.54ppm')
+    """
+    try:
+        st.subheader("💥 Correlation Plot of MS Features")
+
+        df_msplot = msinfo_corr.copy()
+        df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
+
+        rt_col = [col for col in df_msplot.columns if "retention" in col][0]
+        mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
+        corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
+
+        corr_plotMS = px.scatter(
+            df_msplot,
+            x=rt_col,
+            y=mz_col,
+            color=corr_col,
+            size=np.abs(df_msplot[corr_col])**2,
+            opacity=0.7,
+            hover_data=[rt_col, mz_col, corr_col],
+            color_continuous_scale=px.colors.sequential.Jet,
+            title=f"Correlation Plot of MS Features (STOCSY – {label})"
+        )
+
+        corr_plotMS.update_layout(
+            font_color="black",
+            title_font_color="black",
+            font=dict(size=16),
+            height=500
+        )
+
+        st.plotly_chart(corr_plotMS, use_container_width=True)
+
+        html_plot = corr_plotMS.to_html(full_html=False)
+        st.download_button(f"⬇️ Download MS Correlation Plot (HTML) — {label}",
+                           data=html_plot,
+                           file_name=f"stocsy_correlation_MS_{label}.html",
+                           mime="text/html")
+    except Exception as e:
+        st.warning("⚠️ Could not display MS correlation plot.")
+        st.exception(e)
 
 # === Original dafdiscovery_process.py functions (cleaned) ===
 
 """
+DAFdiscovery Process Pipeline
+
+Modular script to analyze NMR, MS, and BioActivity data
+and perform STOCSY and structured correlation analysis.
+
 Author: Ricardo M. Borges (and collaborators)
- | License: MIT
+License: MIT
 """
 
 # === Dependencies ===
@@ -199,7 +255,7 @@ import os
 import os.path
 
 # =========================
-# 💻 1. METADATA HANDLING
+# 🔍 1. METADATA HANDLING
 # =========================
 def analyze_metadata(metadata_df):
     """
@@ -229,27 +285,27 @@ def analyze_metadata(metadata_df):
     if has_nmr and has_ms and has_bio:
         option = 1
         data_in_use = ['NMR', 'MS', 'BioAct']
-        print("💺 Merging data from: NMR + MS + BioActivity → Option 1")
+        print("🧬 Merging data from: NMR + MS + BioActivity → Option 1")
 
     elif has_nmr and has_ms:
         option = 2
         data_in_use = ['NMR', 'MS']
-        print("💺 Merging data from: NMR + MS → Option 2")
+        print("🧪 Merging data from: NMR + MS → Option 2")
 
     elif has_nmr and has_bio:
         option = 3
         data_in_use = ['NMR', 'BioAct']
-        print("💺 Merging data from: NMR + BioActivity → Option 3")
+        print("🔬 Merging data from: NMR + BioActivity → Option 3")
 
     elif has_ms and has_bio:
         option = 4
         data_in_use = ['MS', 'BioAct']
-        print("💺 Merging data from: MS + BioActivity → Option 4")
+        print("⚗️ Merging data from: MS + BioActivity → Option 4")
 
     elif has_nmr:
         option = 5
         data_in_use = ['NMR']
-        print("💺 Working with NMR data only → Option 5")
+        print("📈 Working with NMR data only → Option 5")
 
     else:
         print("❌ Error: Metadata must contain at least one of the following columns: 'NMR_filename', 'MS_filename', or 'BioAct_filename'")
@@ -377,7 +433,7 @@ def prepare_data_by_option(option, Ordered_Samples,
 
 
 # =======================================
-# 📐 3. STOCSY ANALYSIS AND CORRELATIONS
+# 📈 3. STOCSY ANALYSIS AND CORRELATIONS
 # =======================================
 import os
 import pandas as pd
@@ -512,6 +568,10 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
 # app.py
 
 # To run:
+'''
+pip install -r requirements.txt
+streamlit run app.py
+'''
 
 # ===== Auto-installer for most packages =====
 import subprocess
@@ -549,18 +609,10 @@ for key in ["merged_df", "axis", "msinfo", "corr", "covar", "msinfo_corr"]:
         st.session_state[key] = None
 
 st.set_page_config(layout="wide")
-st.title("📊 DAFdiscovery: NMR–MS–BioActivity Integration")
+st.title("🔬 DAFdiscovery: NMR–MS–BioActivity Integration")
 
 # Load the logo
-import os
-from PIL import Image
-
-logo_path = os.path.join(os.path.dirname(__file__), "static", "dafDISCOVERY_icon.png")
-
-if os.path.exists(logo_path):
-    logo = Image.open(logo_path)
-else:
-    print("Arquivo de logo não encontrado:", logo_path)
+logo = Image.open("static/dafDISCOVERY_icon.png")
 
 
 # PayPal donate button
@@ -573,39 +625,18 @@ st.markdown("""
 </a>
 </center>
 """, unsafe_allow_html=True)
-
+#st.stop()
 
 st.markdown("""
-<hr>
-<center>
-<p><strong>Need help?</strong> Read the tutorial:</p>
-<a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
-    <img src="https://img.shields.io/badge/%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
-</a>
-</center>
-""", unsafe_allow_html=True)
-
-
-# Citation
-st.markdown("""
-📖 **Please do CITE:**  
+📖 **Referência citada:**  
 Borges RM, das Neves Costa F, Chagas FO, *et al.*  
 **Data Fusion-based Discovery (DAFdiscovery) pipeline to aid compound annotation and bioactive compound discovery across diverse spectral data.**  
 *Phytochemical Analysis.* 2023; 34(1): 48–55.  
 [https://doi.org/10.1002/pca.3178](https://doi.org/10.1002/pca.3178)
 """)
 
-
-st.markdown("""
-📖 **Check also our tool to convert TLC into chromatograms:**  
-Borges RM, 
-** [TLC2Chrom](https://tlc2chrom.streamlit.app/)
-""")
-
-
 # Display the logo in the sidebar or header
 st.image(logo, width=250)
-
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
@@ -614,7 +645,7 @@ metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
 if metadata_file:
     metadata_df = pd.read_csv(metadata_file)
     st.success("✅ Metadata loaded.")
-    st.markdown("📋 Preview of Metadata CSV:")
+    st.markdown("📋 Preview do Metadata CSV:")
     st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
 
 
@@ -638,10 +669,10 @@ if metadata_file:
         nmr_data_file = st.file_uploader("Upload NMR data CSV", type="csv")
         if nmr_data_file:
             nmr_data = pd.read_csv(nmr_data_file)
-            st.subheader("📈 NMR Preview")
+            st.subheader("🧪 NMR Preview")
 
             ppm = nmr_data[nmr_data.columns[0]]
-            #st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
+            st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
             fig = go.Figure()
             for col in nmr_data.columns[1:]:
                 fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=col, opacity=0.5))
@@ -657,13 +688,13 @@ if metadata_file:
         ms_data_file = st.file_uploader("Upload MS data CSV", type="csv")
         if ms_data_file:
             ms_data = pd.read_csv(ms_data_file)
-            #st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
+            st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
 
     if "BioAct" in data_in_use:
         bio_data_file = st.file_uploader("Upload BioActivity data CSV", type="csv")
         if bio_data_file:
             bio_data = pd.read_csv(bio_data_file)
-            #st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
+            st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
 
     # --- Merge and STOCSY ---
     if st.button("▶️ Run Merge and STOCSY"):
@@ -682,7 +713,7 @@ if metadata_file:
             st.markdown("📋 Preview of merged dataset:")#.head().to_html(index=False), unsafe_allow_html=True)
             st.markdown(st.session_state.merged_df.head().to_html(index=False), unsafe_allow_html=True)
 
-            st.header("💻 Step 3: Run STOCSY from BioAct")
+            st.header("🧪 Step 3: Run STOCSY from BioAct")
             import traceback
             try:
                 st.session_state.corr, st.session_state.covar, st.session_state.msinfo_corr, fig = auto_stocsy_driver_run(
@@ -695,6 +726,8 @@ if metadata_file:
                 )
                 st.session_state.fig = fig  # <-- Salva a figura no estado
                 st.success("✅ STOCSY (BioActivity as driver) complete.")
+                if "MS" in data_in_use and st.session_state.msinfo_corr is not None:
+                    show_stocsy_ms_correlation_plot(st.session_state.msinfo_corr, label="BioAct")
 
                 # Download do CSV com resultados
                 st.download_button("⬇️ Download Correlation Results (BioAct)",
@@ -724,7 +757,7 @@ if metadata_file:
                 
 
     if st.session_state.corr is not None and "NMR" in data_in_use and isinstance(st.session_state.axis, pd.Series):
-        st.subheader("📈 STOCSY Projection (NMR) from BioActivity")
+        st.subheader("🧲 STOCSY Projection (NMR) from BioActivity")
         try:
             corr_array = np.asarray(st.session_state.corr)
             if corr_array.ndim == 0 or corr_array.size == 0:
@@ -734,8 +767,8 @@ if metadata_file:
                 if default_idx < len(st.session_state.axis) and len(st.session_state.merged_df.columns) > 1:
                     default_ppm = st.session_state.axis.iloc[default_idx]
 
-                    st.markdown(f"🔍 Shape of merged_df: `{st.session_state.merged_df.shape}`")
-                    #st.markdown("🔍 First values of the axis")
+                    st.markdown(f"🔍 Shape do merged_df: `{st.session_state.merged_df.shape}`")
+                    #st.markdown("🔍 Primeiros valores do eixo (axis):")
                     #st.markdown("```text\n" + st.session_state.axis.head().to_string() + "\n```")
 
                     try:
@@ -754,11 +787,11 @@ if metadata_file:
                             st.warning("⚠️ STOCSY returned no valid figure to plot.")
 
                     except Exception as stocsy_error:
-                        st.error("❌ Error in the STOCSY function.")
+                        st.error("❌ Erro na função STOCSY.")
                         st.exception(stocsy_error)
 
         except Exception as e:
-            st.warning("⚠️ Unable to plot the NMR STOCSY projection.")
+            st.warning("⚠️ Não foi possível plotar a projeção STOCSY do NMR.")
             st.exception(e)
 
 
@@ -767,28 +800,28 @@ if metadata_file:
 # ===============================
 if st.session_state.merged_df is not None:
     st.header("📌 Run STOCSY with Manual Driver")
-    with st.expander("🛠️ Custom STOCSY: Select a Manual Driver.", expanded=False):
+    with st.expander("🛠️ Custom STOCSY: Select a Manual Driver", expanded=False):
         st.markdown("""
-        Choose a 'ppm' value (for NMR) or an index from the MS region on the combined data axis.
-		Use this option when you want to force the correlation analysis for a specific signal.
+        Escolha um valor de `ppm` (para NMR) ou um índice da região `MS` no eixo combinando todos os dados.
+        Use esse recurso quando quiser forçar a análise de correlação de um sinal específico.
         """)
 
         # Tipo de driver
-        driver_type = st.radio("Select the driver type:", ["NMR (ppm)", "MS (index)"], horizontal=True)
+        driver_type = st.radio("Selecione o tipo de driver:", ["NMR (ppm)", "MS (index)"], horizontal=True)
 
-        driver_input = st.text_input("Enter the driver value (e.g., 2.54 for ppm, or 102 for MS index):", "")
+        driver_input = st.text_input("Digite o valor do driver (ex: 2.54 para ppm, ou 102 para MS index):", "")
 
-        run_manual = st.button("▶️ Run STOCSY with Manual Driver.")
+        run_manual = st.button("▶️ Rodar STOCSY com Driver Manual")
 
         if run_manual:
             if driver_input.strip() == "":
-                st.warning("⚠️ Please enter a valid value for the driver.")
+                st.warning("⚠️ Digite um valor válido para o driver.")
             else:
                 try:
                     driver_value = float(driver_input)
                     prefix = f"{driver_value}ppm" if driver_type == "NMR (ppm)" else f"MS_{driver_value}"
 
-                    st.info(f"💻 Running STOCSY with driver. = `{driver_value}` ({driver_type})")
+                    st.info(f"🔍 Rodando STOCSY com driver = `{driver_value}` ({driver_type})")
 
                     corr_, covar_, msinfo_corr_, fig_manual = run_stocsy_and_export(
                         driver=driver_value,
@@ -825,7 +858,9 @@ if st.session_state.merged_df is not None:
                                            mime="text/csv",
                                            key=f"download_csv_manual_{prefix}")
 
-                        st.success("✅ STOCSY with manual driver completed.")
+                        st.success("✅ STOCSY com driver manual concluído.")
+                        if "MS" in data_in_use and msinfo_corr_ is not None:
+                            show_stocsy_ms_correlation_plot(msinfo_corr_, label=prefix)
                 except Exception as e:
-                    st.error("❌ Error running STOCSY with manual driver.")
+                    st.error("❌ Erro ao rodar STOCSY com driver manual.")
                     st.exception(e)
