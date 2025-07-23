@@ -836,31 +836,35 @@ if st.session_state.merged_df is not None:
                         st.pyplot(fig_manual)
                         html_manual = mpld3.fig_to_html(fig_manual)
                         st.download_button("⬇️ Download STOCSY Manual Plot (HTML)",
-                                           data=html_manual,
-                                           file_name=f"stocsy_manual_{prefix}.html",
-                                           mime="text/html",
-                                           key=f"download_html_manual_{prefix}")
+                                        data=html_manual,
+                                        file_name=f"stocsy_manual_{prefix}.html",
+                                        mime="text/html",
+                                        key=f"download_html_manual_{prefix}")
 
                         # PDF path
                         pdf_manual_path = f"images/stocsy_from_{driver_value}_{'linear'}.pdf"
                         if os.path.exists(pdf_manual_path):
                             with open(pdf_manual_path, "rb") as f:
                                 st.download_button("⬇️ Download STOCSY Manual Plot (PDF)",
-                                                   data=f,
-                                                   file_name=f"stocsy_manual_{prefix}.pdf",
-                                                   mime="application/pdf",
-                                                   key=f"download_pdf_manual_{prefix}")
+                                                data=f,
+                                                file_name=f"stocsy_manual_{prefix}.pdf",
+                                                mime="application/pdf",
+                                                key=f"download_pdf_manual_{prefix}")
 
                         # CSV results
                         st.download_button("⬇️ Download STOCSY Manual CSV Results",
-                                           data=msinfo_corr_.to_csv(index=False),
-                                           file_name=f"stocsy_results_{prefix}.csv",
-                                           mime="text/csv",
-                                           key=f"download_csv_manual_{prefix}")
+                                        data=msinfo_corr_.to_csv(index=False),
+                                        file_name=f"stocsy_results_{prefix}.csv",
+                                        mime="text/csv",
+                                        key=f"download_csv_manual_{prefix}")
 
-                        st.success("✅ STOCSY com driver manual concluído.")
+                        # ✅ ADICIONADO: Scatter Plot dos MS Features
                         if "MS" in data_in_use and msinfo_corr_ is not None:
                             show_stocsy_ms_correlation_plot(msinfo_corr_, label=prefix)
+
+                        st.success("✅ STOCSY com driver manual concluído.")
+
                 except Exception as e:
                     st.error("❌ Erro ao rodar STOCSY com driver manual.")
                     st.exception(e)
+
