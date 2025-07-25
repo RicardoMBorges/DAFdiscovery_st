@@ -565,14 +565,6 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
 
 # === Original Streamlit app.py ===
 
-# app.py
-
-# To run:
-'''
-pip install -r requirements.txt
-streamlit run app.py
-'''
-
 # ===== Auto-installer for most packages =====
 import subprocess
 import sys
@@ -628,12 +620,22 @@ st.markdown("""
 #st.stop()
 
 st.markdown("""
-📖 **Referência citada:**  
+📖 **Please, Cite the following:**  
 Borges RM, das Neves Costa F, Chagas FO, *et al.*  
 **Data Fusion-based Discovery (DAFdiscovery) pipeline to aid compound annotation and bioactive compound discovery across diverse spectral data.**  
 *Phytochemical Analysis.* 2023; 34(1): 48–55.  
 [https://doi.org/10.1002/pca.3178](https://doi.org/10.1002/pca.3178)
 """)
+
+st.markdown("""
+<hr>
+<center>
+<p><strong>Need help?</strong> Read the full step-by-step tutorial:</p>
+<a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
+    <img src="https://img.shields.io/badge/📘%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
+</a>
+</center>
+""", unsafe_allow_html=True)
 
 # Display the logo in the sidebar or header
 st.image(logo, width=250)
