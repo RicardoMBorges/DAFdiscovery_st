@@ -234,13 +234,11 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
 
 """
 DAFdiscovery Process Pipeline
-
-Modular script to analyze NMR, MS, and BioActivity data
-and perform STOCSY and structured correlation analysis.
-
 Author: Ricardo M. Borges (and collaborators)
 License: MIT
 """
+
+
 
 # === Dependencies ===
 import numpy as np
