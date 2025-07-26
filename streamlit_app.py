@@ -234,11 +234,13 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
 
 """
 DAFdiscovery Process Pipeline
+
+Modular script to analyze NMR, MS, and BioActivity data
+and perform STOCSY and structured correlation analysis.
+
 Author: Ricardo M. Borges (and collaborators)
 License: MIT
 """
-
-
 
 # === Dependencies ===
 import numpy as np
@@ -563,6 +565,14 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
 
 # === Original Streamlit app.py ===
 
+# app.py
+
+# To run:
+'''
+pip install -r requirements.txt
+streamlit run app.py
+'''
+
 # ===== Auto-installer for most packages =====
 import subprocess
 import sys
@@ -618,7 +628,7 @@ st.markdown("""
 #st.stop()
 
 st.markdown("""
-📖 **Please, Cite the following:**  
+📖 **Referência citada:**  
 Borges RM, das Neves Costa F, Chagas FO, *et al.*  
 **Data Fusion-based Discovery (DAFdiscovery) pipeline to aid compound annotation and bioactive compound discovery across diverse spectral data.**  
 *Phytochemical Analysis.* 2023; 34(1): 48–55.  
@@ -628,9 +638,12 @@ Borges RM, das Neves Costa F, Chagas FO, *et al.*
 st.markdown("""
 <hr>
 <center>
-<p><strong>Need help?</strong> Read the full step-by-step tutorial:</p>
+<p><strong>Need help?</strong> Read the full step-by-step guide:</p>
+<p><strong>Need help?</strong> Read the tutorial:</p>
 <a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
     <img src="https://img.shields.io/badge/📘%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
+
+    <img src="https://img.shields.io/badge/%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
 </a>
 </center>
 """, unsafe_allow_html=True)
