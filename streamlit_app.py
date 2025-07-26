@@ -605,7 +605,8 @@ st.title("DAFdiscovery: NMR–MS–BioActivity Integration")
 
 # Load the logo
 logo = Image.open("static/dafDISCOVERY_icon.png")
-
+# Display the logo in the sidebar or header
+st.image(logo, width=250)
 
 # PayPal donate button
 st.markdown("""
@@ -634,13 +635,10 @@ st.markdown("""
 <center>
 <p><strong>Need help?</strong> Read the tutorial:</p>
 <a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
-    <img src="https://img.shields.io/badge/📘%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
+    <img src="https://img.shields.io/badge/%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
 </a>
 </center>
 """, unsafe_allow_html=True)
-
-# Display the logo in the sidebar or header
-st.image(logo, width=250)
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
@@ -806,26 +804,26 @@ if st.session_state.merged_df is not None:
     st.header("📌 Run STOCSY with Manual Driver")
     with st.expander("🛠️ Custom STOCSY: Select a Manual Driver", expanded=False):
         st.markdown("""
-        Escolha um valor de `ppm` (para NMR) ou um índice da região `MS` no eixo combinando todos os dados.
-        Use esse recurso quando quiser forçar a análise de correlação de um sinal específico.
+        Choose a ppm value (for NMR) or an index from the MS region on the combined data axis.
+Use this feature when you want to force the correlation analysis of a specific signal.
         """)
 
         # Tipo de driver
-        driver_type = st.radio("Selecione o tipo de driver:", ["NMR (ppm)", "MS (index)"], horizontal=True)
+        driver_type = st.radio("Select the driver type:", ["NMR (ppm)", "MS (index)"], horizontal=True)
 
-        driver_input = st.text_input("Digite o valor do driver (ex: 2.54 para ppm, ou 102 para MS index):", "")
+        driver_input = st.text_input("Enter the driver value (e.g., 2.54 for ppm, or 102 for MS index):", "")
 
-        run_manual = st.button("▶️ Rodar STOCSY com Driver Manual")
+        run_manual = st.button("▶️ Run STOCSY with Manual Driver")
 
         if run_manual:
             if driver_input.strip() == "":
-                st.warning("⚠️ Digite um valor válido para o driver.")
+                st.warning("⚠️ Enter a valid value for the driver.")
             else:
                 try:
                     driver_value = float(driver_input)
                     prefix = f"{driver_value}ppm" if driver_type == "NMR (ppm)" else f"MS_{driver_value}"
 
-                    st.info(f"🔍 Rodando STOCSY com driver = `{driver_value}` ({driver_type})")
+                    st.info(f"🔍 Running STOCSY with driver = `{driver_value}` ({driver_type})")
 
                     corr_, covar_, msinfo_corr_, fig_manual = run_stocsy_and_export(
                         driver=driver_value,
@@ -862,14 +860,13 @@ if st.session_state.merged_df is not None:
                                         mime="text/csv",
                                         key=f"download_csv_manual_{prefix}")
 
-                        # ✅ ADICIONADO: Scatter Plot dos MS Features
+                        # ✅ ADDED: Scatter Plot of MS Features
                         if "MS" in data_in_use and msinfo_corr_ is not None:
                             show_stocsy_ms_correlation_plot(msinfo_corr_, label=prefix)
 
-                        st.success("✅ STOCSY com driver manual concluído.")
+                        st.success("✅ STOCSY with manual driver completed.")
 
                 except Exception as e:
-                    st.error("❌ Erro ao rodar STOCSY com driver manual.")
+                    st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
-
 
