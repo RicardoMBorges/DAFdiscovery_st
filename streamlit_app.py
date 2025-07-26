@@ -196,6 +196,7 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
         df_msplot = msinfo_corr.copy()
         df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
 
+	id_col = [col for col in df_msplot.columns if "row ID" in col][0]
         rt_col = [col for col in df_msplot.columns if "retention" in col][0]
         mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
         corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
@@ -207,7 +208,7 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
             color=corr_col,
             size=np.abs(df_msplot[corr_col])**2,
             opacity=0.7,
-            hover_data=[rt_col, mz_col, corr_col],
+            hover_data=[id_col, rt_col, mz_col, corr_col],
             color_continuous_scale=px.colors.sequential.Jet,
             title=f"Correlation Plot of MS Features (STOCSY – {label})"
         )
