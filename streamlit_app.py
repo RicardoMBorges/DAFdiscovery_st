@@ -194,8 +194,8 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
         st.subheader("💥 Correlation Plot of MS Features")
 
         df_msplot = msinfo_corr.copy()
-        df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns        
-	
+        df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
+
         id_col = [col for col in df_msplot.columns if "row ID" in col][0]
         rt_col = [col for col in df_msplot.columns if "retention" in col][0]
         mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
