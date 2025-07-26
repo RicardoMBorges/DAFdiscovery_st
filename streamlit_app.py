@@ -186,9 +186,9 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
     Parameters
     ----------
     msinfo_corr : pd.DataFrame
-        Correlation and covariance information merged with MS feature table.
+        Correlation and covariance information merged with the MS feature table.
     label : str
-        Suffix used in correlation column (e.g., 'BioAct', '2.54ppm')
+        Suffix used in the correlation column (e.g., 'BioAct', '2.54ppm')
     """
     try:
         st.subheader("💥 Correlation Plot of MS Features")
@@ -565,14 +565,6 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
 
 # === Original Streamlit app.py ===
 
-# app.py
-
-# To run:
-'''
-pip install -r requirements.txt
-streamlit run app.py
-'''
-
 # ===== Auto-installer for most packages =====
 import subprocess
 import sys
@@ -609,7 +601,7 @@ for key in ["merged_df", "axis", "msinfo", "corr", "covar", "msinfo_corr"]:
         st.session_state[key] = None
 
 st.set_page_config(layout="wide")
-st.title("🔬 DAFdiscovery: NMR–MS–BioActivity Integration")
+st.title("DAFdiscovery: NMR–MS–BioActivity Integration")
 
 # Load the logo
 logo = Image.open("static/dafDISCOVERY_icon.png")
@@ -627,23 +619,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 #st.stop()
 
+# Citation
 st.markdown("""
-📖 **Referência citada:**  
+📖 **Please Cite:**  
 Borges RM, das Neves Costa F, Chagas FO, *et al.*  
 **Data Fusion-based Discovery (DAFdiscovery) pipeline to aid compound annotation and bioactive compound discovery across diverse spectral data.**  
 *Phytochemical Analysis.* 2023; 34(1): 48–55.  
 [https://doi.org/10.1002/pca.3178](https://doi.org/10.1002/pca.3178)
 """)
 
+# Tutorial
 st.markdown("""
 <hr>
 <center>
-<p><strong>Need help?</strong> Read the full step-by-step guide:</p>
 <p><strong>Need help?</strong> Read the tutorial:</p>
 <a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/tutorial.md" target="_blank">
     <img src="https://img.shields.io/badge/📘%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
-
-    <img src="https://img.shields.io/badge/%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Open Tutorial">
 </a>
 </center>
 """, unsafe_allow_html=True)
@@ -880,4 +871,5 @@ if st.session_state.merged_df is not None:
                 except Exception as e:
                     st.error("❌ Erro ao rodar STOCSY com driver manual.")
                     st.exception(e)
+
 
