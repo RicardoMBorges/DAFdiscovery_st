@@ -651,29 +651,43 @@ metadata_file = st.file_uploader(
 )
 
 if metadata_file:
-    # Use a non-colliding alias for StringIO
     from io import StringIO as _SIO
 
-    # Read raw text
     raw_txt = metadata_file.getvalue().decode("utf-8", errors="ignore")
 
-    # First try: standard engine (often fine)
-    try:
-        metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", skipinitialspace=True)
-    except Exception:
-        # Fallback: python engine for ragged/odd lines
+    def _read_semicolon_csv(txt: str) -> pd.DataFrame:
+        base_kwargs = dict(sep=";", skipinitialspace=True)
+        # 1) Try fast/default engine
         try:
-            metadata_df = pd.read_csv(
-                _SIO(raw_txt), sep=";", engine="python",
-                skipinitialspace=True, on_bad_lines="skip"
-            )
-        except Exception as e:
-            st.error(f"Failed to parse metadata as ';'-separated CSV.\n{e}")
-            st.stop()
+            return pd.read_csv(_SIO(txt), **base_kwargs)
+        except Exception:
+            pass
+        # 2) Try python engine + on_bad_lines (pandas ≥ 1.3)
+        try:
+            return pd.read_csv(_SIO(txt), engine="python", on_bad_lines="skip", **base_kwargs)
+        except TypeError:
+            # 3) Fallback for older pandas (<1.3): use deprecated flags
+            try:
+                return pd.read_csv(
+                    _SIO(txt), engine="python",
+                    error_bad_lines=False, warn_bad_lines=True,  # deprecated but still works on old versions
+                    **base_kwargs
+                )
+            except Exception as e:
+                raise e
 
-    # If still a single column, force re-read
+    try:
+        metadata_df = _read_semicolon_csv(raw_txt)
+    except Exception as e:
+        st.error(f"Failed to parse metadata as ';'-separated CSV.\n{e}")
+        st.stop()
+
+    # If somehow still one wide column, re-read once more (common when BOM/odd header)
     if metadata_df.shape[1] == 1 and ";" in metadata_df.columns[0]:
-        metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", skipinitialspace=True)
+        try:
+            metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", skipinitialspace=True)
+        except Exception:
+            metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", engine="python", skipinitialspace=True)
 
     # Normalize headers/cells
     metadata_df.columns = metadata_df.columns.astype(str).str.strip()
@@ -695,7 +709,6 @@ if metadata_file:
     ) = analyze_metadata(metadata_df)
 
     st.markdown(f"**Detected Option**: {option} — Using: {', '.join(data_in_use)}")
-
 
 
     # --- Upload data files based on metadata ---
