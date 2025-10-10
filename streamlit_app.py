@@ -13,10 +13,11 @@ from scipy import stats
 from scipy.optimize import curve_fit
 from PIL import Image
 
-def STOCSY(target, X, rt_values, mode="linear", save_label=None):
+def STOCSY(target, X, rt_values, mode="linear"):
     """
     Structured STOCSY: Compute correlation and covariance between a target signal and a matrix of signals.
     """
+
     import os
     import mpld3
     import math
@@ -108,8 +109,7 @@ def STOCSY(target, X, rt_values, mode="linear", save_label=None):
     else:
         axs.set_xlim(x.min(), x.max())
         axs.set_ylim(y.min(), y.max())
-        y_min, y_max = y.min(), y.max()  # ensure hover uses defined bounds
-	
+
     # Ticks do eixo X (ppm)
     min_rt = rt_values.min()
     max_rt = rt_values.max()
@@ -163,13 +163,14 @@ def STOCSY(target, X, rt_values, mode="linear", save_label=None):
             lnx[0].set_linestyle('None')
             lny[0].set_linestyle('None')
         fig.canvas.draw_idle()
+
     fig.canvas.mpl_connect("motion_notify_event", hover)
 
-    os.makedirs('images', exist_ok=True)
-    label = save_label if save_label is not None else f"{target}"
-    plt.savefig(f"images/stocsy_from_{label}_{mode}.pdf", transparent=True, dpi=300)
+    if not os.path.exists('images'):
+        os.mkdir('images')
+    plt.savefig(f"images/stocsy_from_{target}_{mode}.pdf", transparent=True, dpi=300)
     html_str = mpld3.fig_to_html(fig)
-    with open(f"images/stocsy_interactive_{label}_{mode}.html", "w") as f:
+    with open(f"images/stocsy_interactive_{target}min_{mode}.html", "w") as f:
         f.write(html_str)
 
     plt.show()
@@ -194,7 +195,8 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
 
         df_msplot = msinfo_corr.copy()
         df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
-	    
+
+        id_col = [col for col in df_msplot.columns if "row ID" in col][0]
         rt_col = [col for col in df_msplot.columns if "retention" in col][0]
         mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
         corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
@@ -206,7 +208,7 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
             color=corr_col,
             size=np.abs(df_msplot[corr_col])**2,
             opacity=0.7,
-            hover_data=[rt_col, mz_col, corr_col],
+            hover_data=[id_col, rt_col, mz_col, corr_col],
             color_continuous_scale=px.colors.sequential.Jet,
             title=f"Correlation Plot of MS Features (STOCSY – {label})"
         )
@@ -327,36 +329,14 @@ def prepare_data_by_option(option, Ordered_Samples,
     MSinfo = None
 
     if option == 1:  # NMR + MS + BioAct
-        ppm = NMR.iloc[:, 0]
+        ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
         MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-
-        # Build lookup from canonical key -> actual MS column
-        non_value_cols = {"row ID", "row m/z", "row retention time"}
-        value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
-        lookup = {_canon_ms_key(c): c for c in value_cols}
-
-        selected_cols = []
-        missing = []
-        for fn in Ordered_MS_filename:
-            key = _canon_ms_key(fn)
-            if key in lookup:
-                selected_cols.append(lookup[key])
-            else:
-                missing.append(fn)
-
-        if missing:
-            raise KeyError(
-                "MS sample columns not found for these metadata entries:\n"
-                f"  {missing}\n"
-                f"First MS columns (sample-like): {value_cols[:10]}"
-            )
-
-        MSdata = MS[selected_cols]
-        MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
+        MSdata = MSdata[Ordered_MS_filename]
+        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
         BioActdata = BioAct.iloc[:, 1:]
         BioActdata = BioActdata[Ordered_BioAct_filename]
@@ -373,38 +353,15 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
-
     elif option == 2:  # NMR + MS
-        ppm = NMR.iloc[:, 0]
+        ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
         MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-
-        # Build lookup from canonical key -> actual MS column
-        non_value_cols = {"row ID", "row m/z", "row retention time"}
-        value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
-        lookup = {_canon_ms_key(c): c for c in value_cols}
-
-        selected_cols = []
-        missing = []
-        for fn in Ordered_MS_filename:
-            key = _canon_ms_key(fn)
-            if key in lookup:
-                selected_cols.append(lookup[key])
-            else:
-                missing.append(fn)
-
-        if missing:
-            raise KeyError(
-                "MS sample columns not found for these metadata entries:\n"
-                f"  {missing}\n"
-                f"First MS columns (sample-like): {value_cols[:10]}"
-            )
-
-        MSdata = MS[selected_cols]
-        MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
+        MSdata = MSdata[Ordered_MS_filename]
+        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
         MergeDF = pd.concat([NMR, MSdata / 1e8], ignore_index=True)
 
@@ -415,7 +372,6 @@ def prepare_data_by_option(option, Ordered_Samples,
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
 
         filename = "MergeDF_NMR_MS.csv"
-
 
     elif option == 3:  # NMR + BioAct
         ppm = NMR["Unnamed: 0"]
@@ -435,34 +391,14 @@ def prepare_data_by_option(option, Ordered_Samples,
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
 
         filename = "MergeDF_NMR_BioAct.csv"
+
     elif option == 4:  # MS + BioAct
+        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        MSdata = MSdata[Ordered_MS_filename]
+        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
-        # Map metadata filenames to actual MS columns
-        non_value_cols = {"row ID", "row m/z", "row retention time"}
-        value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
-        lookup = {_canon_ms_key(c): c for c in value_cols}
-
-        selected_cols = []
-        missing = []
-        for fn in Ordered_MS_filename:
-            key = _canon_ms_key(fn)
-            if key in lookup:
-                selected_cols.append(lookup[key])
-            else:
-                missing.append(fn)
-
-        if missing:
-            raise KeyError(
-                "MS sample columns not found for these metadata entries:\n"
-                f"  {missing}\n"
-                f"First MS columns (sample-like): {value_cols[:10]}"
-            )
-
-        MSdata = MS[selected_cols].copy()
-        MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
-
-        BioActdata = BioAct.iloc[:, 1:].copy()
+        BioActdata = BioAct.iloc[:, 1:]
         BioActdata = BioActdata[Ordered_BioAct_filename]
         BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
 
@@ -471,7 +407,6 @@ def prepare_data_by_option(option, Ordered_Samples,
         new_axis = pd.Series(np.arange(0, len(MSdata) + len(BioActdata)))
 
         filename = "MergeDF_MS_BioAct.csv"
-
 
     elif option == 5:  # NMR only
         ppm = NMR["Unnamed: 0"]
@@ -503,6 +438,26 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     """
     Runs STOCSY using a selected driver, calculates correlation and covariance,
     maps results to MSinfo (if available), and exports them to a CSV file.
+
+    Parameters:
+    -----------
+    driver : float
+        The driver value (can be a ppm or synthetic value from new_axis).
+    MergeDF : pd.DataFrame
+        The merged data matrix with NMR, MS, and/or BioAct data.
+    axis : pd.Series
+        The full axis of variables (including ppm, MS and/or BioAct).
+    MSinfo : pd.DataFrame or None
+        The MSinfo dataframe containing "row ID", "row m/z", "row retention time". Can be None.
+    output_prefix : str
+        Prefix to use in naming output files (e.g., "fromBioAct", or a ppm value).
+    
+    Returns:
+    --------
+    corr : np.ndarray
+    covar : np.ndarray
+    MSinfo_corr : pd.DataFrame or None
+    fig : matplotlib.figure.Figure
     """
 
     # Run STOCSY
@@ -512,54 +467,35 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     corrDF = pd.DataFrame(corr, columns=[f'corr_{output_prefix}'])
     covarDF = pd.DataFrame(covar, columns=[f'covar_{output_prefix}'])
 
+    # Handle case where MSinfo is available
     MSinfo_corr = None
-    if MSinfo is not None and isinstance(MSinfo, pd.DataFrame) and len(MSinfo) > 0:
+    if MSinfo is not None and isinstance(MSinfo, pd.DataFrame):
         try:
-            # --- Robust MS slice detection ---
-            # axis is: [NMR (descending ppm)] + [MS (synthetic, ascending)] + [BioAct (synthetic, ascending)]
-            ax = np.asarray(axis).astype(float)
-            diffs = np.diff(ax)
-
-            # Find the point where ppm (descending) stops: last index where diff < 0 before it turns >= 0
-            # If axis is strictly descending first, the first non-negative diff marks the transition.
-            transition_idx = np.argmax(diffs >= 0)  # index in diffs; NMR rows = transition_idx + 1
-            n_nmr = int(transition_idx + 1) if diffs.size > 0 else 0
-
-            total_rows = len(ax)
-            ms_rows = int(len(MSinfo))
-
-            # If there is BioAct appended after MS, its length is:
-            n_bio = max(total_rows - n_nmr - ms_rows, 0)
-
-            # MS rows start right after NMR and span ms_rows
-            ms_start = n_nmr
-            ms_end = ms_start + ms_rows  # exclusive
-
-            if ms_end > len(corrDF):
-                # Fallback: try last ms_rows before the end (robust against exotic axes)
-                ms_end = len(corrDF) - n_bio
-                ms_start = max(ms_end - ms_rows, 0)
-
-            corrDF_MS = corrDF.iloc[ms_start:ms_end].reset_index(drop=True)
-            covarDF_MS = covarDF.iloc[ms_start:ms_end].reset_index(drop=True)
+            corrDF_MS = corrDF.iloc[-len(MSinfo):].reset_index(drop=True)
+            covarDF_MS = covarDF.iloc[-len(MSinfo):].reset_index(drop=True)
 
             MSinfo_corr = pd.concat([MSinfo.reset_index(drop=True), corrDF_MS], axis=1)
             MSinfo_corr_covar = pd.concat([MSinfo_corr, covarDF_MS], axis=1)
 
-            # Export
-            os.makedirs("data", exist_ok=True)
+            # Export to CSV
+            if not os.path.exists("data"):
+                os.makedirs("data")
+
             corr_filename = f"data/MSinfo_corr_{output_prefix}.csv"
             covar_filename = f"data/MSinfo_corr_covar_{output_prefix}.csv"
+
             MSinfo_corr.to_csv(corr_filename, sep=",", index=False)
             MSinfo_corr_covar.to_csv(covar_filename, sep=",", index=False)
+
             print(f"✅ Correlation file saved to {corr_filename}")
             print(f"✅ Correlation + Covariance file saved to {covar_filename}")
-
         except Exception as e:
             print(f"⚠️ Could not export MSinfo correlation files: {e}")
             MSinfo_corr = None
 
     return corr, covar, MSinfo_corr, fig
+
+
 
 
 def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear", driver_value=None):
@@ -612,6 +548,8 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
     )
 
     return corr, covar, MSinfo_corr, fig
+
+
 
 
 # =======================================
@@ -706,119 +644,17 @@ st.markdown("""
   
 """)
 
-# ---------- Robust CSV reader for Streamlit uploads ----------
-import csv, io
-
-def read_csv_safely(uploaded_file, prefer: str | None = None) -> pd.DataFrame:
-    """
-    Read a CSV-like file with auto delimiter detection and multiple fallbacks.
-    - Detects delimiter among , ; \t | (or honors `prefer` if it matches content)
-    - Handles UTF-8 BOM and Latin-1
-    - Falls back to engine='python' if needed
-    """
-    raw_bytes = uploaded_file.getvalue()
-    text_utf8 = raw_bytes.decode("utf-8", errors="ignore")
-    buf = io.StringIO(text_utf8)
-
-    # 1) Try to sniff the delimiter on a sample
-    sample = text_utf8[:10000]  # enough for header + a few rows
-    detected = ","
-    try:
-        sniffed = csv.Sniffer().sniff(sample, delimiters=";,|\t")
-        detected = sniffed.delimiter
-    except Exception:
-        pass
-
-    # honor preferred delimiter if provided and present in sample
-    if prefer in {",", ";", "\t", "|"} and prefer in sample:
-        detected = prefer
-
-    # 2) First attempt (UTF-8, C engine)
-    try:
-        buf.seek(0)
-        return pd.read_csv(buf, sep=detected)
-    except Exception:
-        pass
-
-    # 3) Retry with python engine (tolerant of ragged lines)
-    try:
-        buf.seek(0)
-        return pd.read_csv(buf, sep=detected, engine="python", skipinitialspace=True)
-    except Exception:
-        pass
-
-    # 4) Try Latin-1 decode if UTF-8 failed due to encoding
-    try:
-        text_l1 = raw_bytes.decode("latin-1")
-        buf2 = io.StringIO(text_l1)
-        # Re-sniff on latin-1 just in case
-        try:
-            sniffed2 = csv.Sniffer().sniff(text_l1[:10000], delimiters=";,|\t")
-            detected2 = sniffed2.delimiter
-        except Exception:
-            detected2 = detected
-        return pd.read_csv(buf2, sep=detected2, engine="python", skipinitialspace=True)
-    except Exception as e:
-        # Final hail-mary: let pandas guess
-        buf.seek(0)
-        return pd.read_csv(buf, engine="python")
-
-import re
-from pathlib import Path
-
-import re
-from pathlib import Path
-
-def _canon_sample_key(s: str) -> str:
-    """
-    Canonical key for matching metadata *_filename columns to table headers.
-    - strip path and extension
-    - drop common suffix tokens (e.g., 'Peak area', 'Area', 'Height')
-    - remove bracketed parts and spaces/underscores/hyphens differences
-    - lowercase
-    """
-    s = str(s).strip()
-    base = Path(s).name
-    base = re.sub(r"\.(?:csv|tsv|txt|xlsx|xls|mzml|mzxml)$", "", base, flags=re.I)
-    base = re.sub(r"\[.*?\]|\(.*?\)", "", base)         # drop bracketed qualifiers
-    base = re.sub(r"(?:\s+Peak\s*area|\s*Area|\s*Height)$", "", base, flags=re.I)
-    base = re.sub(r"[^A-Za-z0-9]+", "", base)           # collapse to alnum
-    return base.lower()
-
-def _resolve_columns_by_canon(requested_names, available_columns):
-    """
-    Map a list of requested names (from metadata) to actual dataframe columns,
-    using canonicalization on both sides. Returns (selected_cols, missing).
-    """
-    lookup = {_canon_sample_key(c): c for c in available_columns}
-    selected = []
-    missing  = []
-    for req in requested_names:
-        key = _canon_sample_key(req)
-        real = lookup.get(key)
-        if real is None:
-            missing.append(req)
-        else:
-            selected.append(real)
-    return selected, missing
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
-metadata_file = st.file_uploader(
-    "Upload your Metadata CSV file:",
-    type=["csv", "txt", "tsv"]
-)
-
-# Predeclare to avoid UnboundLocalError
-nmr_data: pd.DataFrame | None = None
-ms_data: pd.DataFrame | None = None
-bio_data: pd.DataFrame | None = None
+metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
 
 if metadata_file:
-    metadata_df = read_csv_safely(metadata_file)  # << robust reader
+    metadata_df = pd.read_csv(metadata_file)
     st.success("✅ Metadata loaded.")
-    st.caption(f"Detected columns: {', '.join(map(str, metadata_df.columns))}")
-    st.dataframe(metadata_df.head(), use_container_width=True)
+    st.markdown("📋 Preview do Metadata CSV:")
+    st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
+
 
     (
         ordered_samples,
@@ -834,59 +670,38 @@ if metadata_file:
     # --- Upload data files based on metadata ---
     st.header("📂 Step 2: Upload Required Data Files")
 
-    # NMR
-    if "NMR" in data_in_use:
-        nmr_data_file = st.file_uploader(
-            "Upload NMR data (CSV/TSV)",
-            type=["csv", "tsv", "txt"]
-        )
-        if nmr_data_file:
-            nmr_data = read_csv_safely(nmr_data_file)
-            # First column as axis (ppm)
-            ppm = nmr_data.iloc[:, 0]
-            st.markdown("**📁 NMR column headers:** " + ", ".join(map(str, nmr_data.columns)))
+    nmr_data = ms_data = bio_data = None
 
+    if "NMR" in data_in_use:
+        nmr_data_file = st.file_uploader("Upload NMR data CSV", type="csv")
+        if nmr_data_file:
+            nmr_data = pd.read_csv(nmr_data_file)
+            st.subheader("🧪 NMR Preview")
+
+            ppm = nmr_data[nmr_data.columns[0]]
+            st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
             fig = go.Figure()
             for col in nmr_data.columns[1:]:
-                fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=str(col), opacity=0.5))
-            fig.update_layout(
-                title="NMR Raw Spectra",
-                xaxis_title="ppm",
-                yaxis_title="Intensity",
-                xaxis=dict(autorange='reversed'),
-                height=400
-            )
+                fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=col, opacity=0.5))
+            fig.update_layout(title="NMR Raw Spectra", xaxis_title="ppm", yaxis_title="Intensity",
+                              xaxis=dict(autorange='reversed'), height=400)
             st.plotly_chart(fig, use_container_width=True)
 
             html_nmr = pio.to_html(fig, full_html=False)
-            st.download_button(
-                "⬇️ Download NMR Plot (HTML)",
-                data=html_nmr,
-                file_name="nmr_plot.html",
-                mime="text/html"
-            )
+            st.download_button("⬇️ Download NMR Plot (HTML)", data=html_nmr,
+                               file_name="nmr_plot.html", mime="text/html")
 
-    # MS
     if "MS" in data_in_use:
-        ms_data_file = st.file_uploader(
-            "Upload MS data (CSV/TSV)",
-            type=["csv", "tsv", "txt"]
-        )
+        ms_data_file = st.file_uploader("Upload MS data CSV", type="csv")
         if ms_data_file:
-            ms_data = read_csv_safely(ms_data_file)
-            st.markdown("**📁 MS column headers:** " + ", ".join(map(str, ms_data.columns)))
+            ms_data = pd.read_csv(ms_data_file)
+            st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
 
-    # BioActivity
     if "BioAct" in data_in_use:
-        bio_data_file = st.file_uploader(
-            "Upload BioActivity (CSV/TSV)",
-            type=["csv", "tsv", "txt"]
-        )
+        bio_data_file = st.file_uploader("Upload BioActivity data CSV", type="csv")
         if bio_data_file:
-            # If you *know* it’s semicolon-separated, use: read_csv_safely(bio_data_file, prefer=";")
-            bio_data = read_csv_safely(bio_data_file)
-            st.markdown("**📁 BioActivity column headers:** " + ", ".join(map(str, bio_data.columns)))
-
+            bio_data = pd.read_csv(bio_data_file)
+            st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
 
     # --- Merge and STOCSY ---
     if st.button("▶️ Run Merge and STOCSY"):
