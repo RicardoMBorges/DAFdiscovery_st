@@ -333,8 +333,29 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        MSdata = MSdata[Ordered_MS_filename]
-        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
+		# Build lookup from canonical key -> actual MS column
+		non_value_cols = {"row ID", "row m/z", "row retention time"}
+		value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
+		lookup = {_canon_ms_key(c): c for c in value_cols}
+		
+		selected_cols = []
+		missing = []
+		for fn in Ordered_MS_filename:
+		    key = _canon_ms_key(fn)
+		    if key in lookup:
+		        selected_cols.append(lookup[key])
+		    else:
+		        missing.append(fn)
+		
+		if missing:
+		    raise KeyError(
+		        "MS sample columns not found for these metadata entries:\n"
+		        f"  {missing}\n"
+		        f"First MS columns (sample-like): {value_cols[:10]}"
+		    )
+		
+		MSdata = MS[selected_cols]
+        MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
 
         BioActdata = BioAct.iloc[:, 1:]
         BioActdata = BioActdata[Ordered_BioAct_filename]
@@ -695,6 +716,22 @@ def read_csv_safely(uploaded_file, prefer: str | None = None) -> pd.DataFrame:
         # Final hail-mary: let pandas guess
         buf.seek(0)
         return pd.read_csv(buf, engine="python")
+
+import re
+from pathlib import Path
+
+def _canon_ms_key(s: str) -> str:
+    """
+    Canonical key for matching metadata MS_filename to MS table columns.
+    - strip path
+    - drop any trailing ' Peak area'/' Height'/' Area' etc.
+    - lowercase
+    """
+    s = str(s).strip()
+    base = Path(s).name              # drop folders
+    base = base.split(" ")[0]        # keep token before first space
+    base = re.sub(r"\.(?:mzml|mzxml|csv)$", "", base, flags=re.I)  # drop extension
+    return base.lower()
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
