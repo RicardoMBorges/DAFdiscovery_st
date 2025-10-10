@@ -651,30 +651,38 @@ metadata_file = st.file_uploader(
 )
 
 if metadata_file:
-    # 1) Force semicolon parsing (and keep robust fallbacks)
+    # Use a non-colliding alias for StringIO
+    from io import StringIO as _SIO
+
+    # Read raw text
     raw_txt = metadata_file.getvalue().decode("utf-8", errors="ignore")
 
-    # If your read_csv_safely is present, honor prefer=";"
+    # First try: standard engine (often fine)
     try:
-        metadata_df = read_csv_safely(metadata_file, prefer=";")
+        metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", skipinitialspace=True)
     except Exception:
-        # Fallback: force sep=";" with python engine (tolerant)
-        import io
-        metadata_df = pd.read_csv(io.StringIO(raw_txt), sep=";", engine="python", skipinitialspace=True)
+        # Fallback: python engine for ragged/odd lines
+        try:
+            metadata_df = pd.read_csv(
+                _SIO(raw_txt), sep=";", engine="python",
+                skipinitialspace=True, on_bad_lines="skip"
+            )
+        except Exception as e:
+            st.error(f"Failed to parse metadata as ';'-separated CSV.\n{e}")
+            st.stop()
 
-    # 2) If pandas still produced a single wide column, re-read with sep=";"
+    # If still a single column, force re-read
     if metadata_df.shape[1] == 1 and ";" in metadata_df.columns[0]:
-        import io
-        metadata_df = pd.read_csv(io.StringIO(raw_txt), sep=";", engine="python", skipinitialspace=True)
+        metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", skipinitialspace=True)
 
-    # 3) Normalize headers and cells (trim, keep as str)
+    # Normalize headers/cells
     metadata_df.columns = metadata_df.columns.astype(str).str.strip()
     for col in ["Samples", "NMR_filename", "MS_filename", "BioAct_filename"]:
         if col in metadata_df.columns:
             metadata_df[col] = metadata_df[col].astype(str).str.strip()
 
     st.success("✅ Metadata loaded (semicolon-separated).")
-    st.caption(f"Detected columns: {', '.join(map(str, metadata_df.columns))}")
+    st.caption("Detected columns: " + ", ".join(map(str, metadata_df.columns)))
     st.dataframe(metadata_df.head(), use_container_width=True)
 
     (
@@ -687,6 +695,7 @@ if metadata_file:
     ) = analyze_metadata(metadata_df)
 
     st.markdown(f"**Detected Option**: {option} — Using: {', '.join(data_in_use)}")
+
 
 
     # --- Upload data files based on metadata ---
