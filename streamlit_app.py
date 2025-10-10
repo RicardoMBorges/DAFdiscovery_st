@@ -639,6 +639,63 @@ st.markdown("""
   
 """)
 
+# ---------- Robust CSV reader for Streamlit uploads ----------
+import csv, io
+
+def read_csv_safely(uploaded_file, prefer: str | None = None) -> pd.DataFrame:
+    """
+    Read a CSV-like file with auto delimiter detection and multiple fallbacks.
+    - Detects delimiter among , ; \t | (or honors `prefer` if it matches content)
+    - Handles UTF-8 BOM and Latin-1
+    - Falls back to engine='python' if needed
+    """
+    raw_bytes = uploaded_file.getvalue()
+    text_utf8 = raw_bytes.decode("utf-8", errors="ignore")
+    buf = io.StringIO(text_utf8)
+
+    # 1) Try to sniff the delimiter on a sample
+    sample = text_utf8[:10000]  # enough for header + a few rows
+    detected = ","
+    try:
+        sniffed = csv.Sniffer().sniff(sample, delimiters=";,|\t")
+        detected = sniffed.delimiter
+    except Exception:
+        pass
+
+    # honor preferred delimiter if provided and present in sample
+    if prefer in {",", ";", "\t", "|"} and prefer in sample:
+        detected = prefer
+
+    # 2) First attempt (UTF-8, C engine)
+    try:
+        buf.seek(0)
+        return pd.read_csv(buf, sep=detected)
+    except Exception:
+        pass
+
+    # 3) Retry with python engine (tolerant of ragged lines)
+    try:
+        buf.seek(0)
+        return pd.read_csv(buf, sep=detected, engine="python", skipinitialspace=True)
+    except Exception:
+        pass
+
+    # 4) Try Latin-1 decode if UTF-8 failed due to encoding
+    try:
+        text_l1 = raw_bytes.decode("latin-1")
+        buf2 = io.StringIO(text_l1)
+        # Re-sniff on latin-1 just in case
+        try:
+            sniffed2 = csv.Sniffer().sniff(text_l1[:10000], delimiters=";,|\t")
+            detected2 = sniffed2.delimiter
+        except Exception:
+            detected2 = detected
+        return pd.read_csv(buf2, sep=detected2, engine="python", skipinitialspace=True)
+    except Exception as e:
+        # Final hail-mary: let pandas guess
+        buf.seek(0)
+        return pd.read_csv(buf, engine="python")
+
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
