@@ -14,6 +14,37 @@ from scipy import stats
 from scipy.optimize import curve_fit
 from PIL import Image
 
+def read_table_any(uploaded_file):
+    """
+    Robustly read CSV/TSV files with unknown separators (comma/semicolon/tab).
+    Tries pandas engine auto-detection first; falls back to explicit seps.
+    """
+    import io
+    import pandas as pd
+
+    # 1) Try pandas' built-in detector
+    try:
+        return pd.read_csv(uploaded_file, sep=None, engine="python", skipinitialspace=True)
+    except Exception:
+        pass
+
+    # 2) Fallbacks
+    uploaded_file.seek(0)
+    try:
+        return pd.read_csv(uploaded_file, sep=";", engine="python", skipinitialspace=True)
+    except Exception:
+        pass
+
+    uploaded_file.seek(0)
+    try:
+        return pd.read_csv(uploaded_file, sep="\t", engine="python", skipinitialspace=True)
+    except Exception:
+        pass
+
+    uploaded_file.seek(0)
+    return pd.read_csv(uploaded_file, sep=",", engine="python", skipinitialspace=True)
+
+
 def STOCSY(target, X, rt_values, mode="linear"):
     """
     Structured STOCSY: Compute correlation and covariance between a target signal and a matrix of signals.
@@ -709,7 +740,7 @@ st.header("📁 Step 1: Upload Metadata")
 metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
 
 if metadata_file:
-    metadata_df = pd.read_csv(metadata_file)
+    metadata_df = read_table_any(metadata_file)
     st.success("✅ Metadata loaded.")
     st.markdown("📋 Preview do Metadata CSV:")
     st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
@@ -734,7 +765,7 @@ if metadata_file:
     if "NMR" in data_in_use:
         nmr_data_file = st.file_uploader("Upload NMR data CSV", type="csv")
         if nmr_data_file:
-            nmr_data = pd.read_csv(nmr_data_file)
+            nmr_data = read_table_any(nmr_data_file)
             st.subheader("🧪 NMR Preview")
 
             ppm = nmr_data[nmr_data.columns[0]]
@@ -753,13 +784,13 @@ if metadata_file:
     if "MS" in data_in_use:
         ms_data_file = st.file_uploader("Upload MS data CSV", type="csv")
         if ms_data_file:
-            ms_data = pd.read_csv(ms_data_file)
+            ms_data = read_table_any(ms_data_file)
             st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
 
     if "BioAct" in data_in_use:
         bio_data_file = st.file_uploader("Upload BioActivity data CSV", type="csv")
         if bio_data_file:
-            bio_data = pd.read_csv(bio_data_file)
+            bio_data = read_table_any(bio_data_file)
             st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
 
     # --- Merge and STOCSY ---
