@@ -196,30 +196,22 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
         df_msplot = msinfo_corr.copy()
         df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
 
-        id_col = [col for col in df_msplot.columns if "row ID" in col][0]
-        rt_col = [col for col in df_msplot.columns if "retention" in col][0]
-        mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
-        corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
+        # match by tokens present after normalization
+        id_col   = [c for c in df_msplot.columns if "row" in c and "id" in c][0]
+        rt_col   = [c for c in df_msplot.columns if "retention" in c and "time" in c][0]
+        mz_col   = [c for c in df_msplot.columns if ("m/z" in c) or ("mz" in c)][0]
+        corr_tok = f"corr_{label.lower()}"
+        corr_col = [c for c in df_msplot.columns if c == corr_tok or c.startswith("corr_")][0]
 
         corr_plotMS = px.scatter(
-            df_msplot,
-            x=rt_col,
-            y=mz_col,
-            color=corr_col,
-            size=np.abs(df_msplot[corr_col])**2,
-            opacity=0.7,
+            df_msplot, x=rt_col, y=mz_col, color=corr_col,
+            size=np.abs(df_msplot[corr_col])**2, opacity=0.7,
             hover_data=[id_col, rt_col, mz_col, corr_col],
             color_continuous_scale=px.colors.sequential.Jet,
             title=f"Correlation Plot of MS Features (STOCSY – {label})"
         )
-
-        corr_plotMS.update_layout(
-            font_color="black",
-            title_font_color="black",
-            font=dict(size=16),
-            height=500
-        )
-
+        corr_plotMS.update_layout(font_color="black", title_font_color="black",
+                                  font=dict(size=16), height=500)
         st.plotly_chart(corr_plotMS, use_container_width=True)
 
         html_plot = corr_plotMS.to_html(full_html=False)
@@ -471,104 +463,91 @@ def prepare_data_by_option(option, Ordered_Samples,
     new_axis = None
     MSinfo = None
 
+    # ---------- NMR (when present) ----------
+    if option in (1, 2, 3, 5):
+        ppm = NMR.iloc[:, 0]  # first col is axis
+        nmr_block = NMR.iloc[:, 1:].copy()
+        nmr_cols, nmr_missing = _resolve_column_order(
+            nmr_block, Ordered_NMR_filename, Ordered_Samples
+        )
+        _raise_or_log_missing("NMR", NMR, nmr_missing)
+        NMR = pd.concat([ppm, nmr_block[nmr_cols]], axis=1)
+        NMR.columns = ["Unnamed: 0"] + Ordered_Samples[:len(nmr_cols)]
+
+    # ---------- MS (when present) ----------
+    if option in (1, 2, 4):
+        MSinfo = MS[["row ID", "row m/z", "row retention time"]].copy()
+        MSdata_raw = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
+        ms_cols, ms_missing = _resolve_column_order(
+            MSdata_raw, Ordered_MS_filename, Ordered_Samples
+        )
+        _raise_or_log_missing("MS", MS, ms_missing)
+        MSdata = MSdata_raw[ms_cols].copy()
+        MSdata.columns = Ordered_Samples[:len(ms_cols)]
+
+    # ---------- BioAct (when present) ----------
+    if option in (1, 3, 4):
+        bio_block = BioAct.iloc[:, 1:].copy() if BioAct.shape[1] > 1 else BioAct.copy()
+        bio_cols, bio_missing = _resolve_column_order(
+            bio_block, Ordered_BioAct_filename, Ordered_Samples
+        )
+        _raise_or_log_missing("BioActivity", BioAct, bio_missing)
+        BioActdata = bio_block[bio_cols].copy()
+        BioActdata.columns = Ordered_Samples[:len(bio_cols)]
+
+    # ---------- Build merged matrix & axis ----------
     if option == 1:  # NMR + MS + BioAct
-        ppm = NMR["Unnamed: 0"]
-        NMR = NMR[Ordered_NMR_filename]
-        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
-
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        MSdata = MSdata[Ordered_MS_filename]
-        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
-
-        BioActdata = BioAct.iloc[:, 1:]
-        BioActdata = BioActdata[Ordered_BioAct_filename]
-        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
-
-        # BioAct always last
-        MergeDF = pd.concat([NMR, MSdata / 1e8, BioActdata], ignore_index=True)
+        MergeDF = pd.concat([NMR.drop(columns=["Unnamed: 0"]),
+                             MSdata / 1e8,
+                             BioActdata], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
         start = ppm.values[-1] + gap
-        end = start + ((len(MSdata) + len(BioActdata)) * gap)
+        end = start + (len(MergeDF) - len(ppm)) * gap
         axis2 = np.arange(start, end, gap)
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
-
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
     elif option == 2:  # NMR + MS
-        ppm = NMR["Unnamed: 0"]
-        NMR = NMR[Ordered_NMR_filename]
-        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
-
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        MSdata = MSdata[Ordered_MS_filename]
-        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
-
-        MergeDF = pd.concat([NMR, MSdata / 1e8], ignore_index=True)
+        MergeDF = pd.concat([NMR.drop(columns=["Unnamed: 0"]),
+                             MSdata / 1e8], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
         start = ppm.values[-1] + gap
-        end = start + len(MSdata) * gap
+        end = start + (len(MergeDF) - len(ppm)) * gap
         axis2 = np.arange(start, end, gap)
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
-
         filename = "MergeDF_NMR_MS.csv"
 
     elif option == 3:  # NMR + BioAct
-        ppm = NMR["Unnamed: 0"]
-        NMR = NMR[Ordered_NMR_filename]
-        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
-
-        BioActdata = BioAct.iloc[:, 1:]
-        BioActdata = BioActdata[Ordered_BioAct_filename]
-        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
-
-        MergeDF = pd.concat([NMR, BioActdata / 20000], ignore_index=True)
+        MergeDF = pd.concat([NMR.drop(columns=["Unnamed: 0"]),
+                             BioActdata / 20000], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
         start = ppm.values[-1] + gap
-        end = start + len(BioActdata) * gap
+        end = start + (len(MergeDF) - len(ppm)) * gap
         axis2 = np.arange(start, end, gap)
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
-
         filename = "MergeDF_NMR_BioAct.csv"
 
     elif option == 4:  # MS + BioAct
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        MSdata = MSdata[Ordered_MS_filename]
-        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
-
-        BioActdata = BioAct.iloc[:, 1:]
-        BioActdata = BioActdata[Ordered_BioAct_filename]
-        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
-
         MergeDF = pd.concat([MSdata, BioActdata], ignore_index=True)
-
-        new_axis = pd.Series(np.arange(0, len(MSdata) + len(BioActdata)))
-
+        new_axis = pd.Series(np.arange(0, len(MergeDF)))
         filename = "MergeDF_MS_BioAct.csv"
 
     elif option == 5:  # NMR only
-        ppm = NMR["Unnamed: 0"]
-        NMR = NMR[Ordered_NMR_filename]
-        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
-
-        MergeDF = NMR
+        MergeDF = NMR.drop(columns=["Unnamed: 0"])
         new_axis = ppm
         filename = "MergeDF_NMR.csv"
 
     else:
         raise ValueError("❌ Invalid option. Option must be between 1 and 5.")
 
-    if not os.path.exists('data'):
-        os.makedirs('data')
-
+    os.makedirs('data', exist_ok=True)
     MergeDF.to_csv(f"data/{filename}", sep=",", index=False)
     print(f"✅ Data merged and saved to 'data/{filename}'")
     return MergeDF, new_axis, MSinfo
+
 
 
 # =======================================
