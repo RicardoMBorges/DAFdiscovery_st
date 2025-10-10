@@ -327,34 +327,35 @@ def prepare_data_by_option(option, Ordered_Samples,
     MSinfo = None
 
     if option == 1:  # NMR + MS + BioAct
-        ppm = NMR["Unnamed: 0"]
+        ppm = NMR.iloc[:, 0]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
         MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-		# Build lookup from canonical key -> actual MS column
-		non_value_cols = {"row ID", "row m/z", "row retention time"}
-		value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
-		lookup = {_canon_ms_key(c): c for c in value_cols}
-		
-		selected_cols = []
-		missing = []
-		for fn in Ordered_MS_filename:
-		    key = _canon_ms_key(fn)
-		    if key in lookup:
-		        selected_cols.append(lookup[key])
-		    else:
-		        missing.append(fn)
-		
-		if missing:
-		    raise KeyError(
-		        "MS sample columns not found for these metadata entries:\n"
-		        f"  {missing}\n"
-		        f"First MS columns (sample-like): {value_cols[:10]}"
-		    )
-		
-		MSdata = MS[selected_cols]
+
+        # Build lookup from canonical key -> actual MS column
+        non_value_cols = {"row ID", "row m/z", "row retention time"}
+        value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
+        lookup = {_canon_ms_key(c): c for c in value_cols}
+
+        selected_cols = []
+        missing = []
+        for fn in Ordered_MS_filename:
+            key = _canon_ms_key(fn)
+            if key in lookup:
+                selected_cols.append(lookup[key])
+            else:
+                missing.append(fn)
+
+        if missing:
+            raise KeyError(
+                "MS sample columns not found for these metadata entries:\n"
+                f"  {missing}\n"
+                f"First MS columns (sample-like): {value_cols[:10]}"
+            )
+
+        MSdata = MS[selected_cols]
         MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
 
         BioActdata = BioAct.iloc[:, 1:]
@@ -372,36 +373,37 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
+
     elif option == 2:  # NMR + MS
-		ppm = NMR.iloc[:, 0]
+        ppm = NMR.iloc[:, 0]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
         MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        # Build lookup from canonical key -> actual MS column
-		non_value_cols = {"row ID", "row m/z", "row retention time"}
-		value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
-		lookup = {_canon_ms_key(c): c for c in value_cols}
-		
-		selected_cols = []
-		missing = []
-		for fn in Ordered_MS_filename:
-		    key = _canon_ms_key(fn)
-		    if key in lookup:
-		        selected_cols.append(lookup[key])
-		    else:
-		        missing.append(fn)
-		
-		if missing:
-		    raise KeyError(
-		        "MS sample columns not found for these metadata entries:\n"
-		        f"  {missing}\n"
-		        f"First MS columns (sample-like): {value_cols[:10]}"
-		    )
-		
-		MSdata = MS[selected_cols]
 
+        # Build lookup from canonical key -> actual MS column
+        non_value_cols = {"row ID", "row m/z", "row retention time"}
+        value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
+        lookup = {_canon_ms_key(c): c for c in value_cols}
+
+        selected_cols = []
+        missing = []
+        for fn in Ordered_MS_filename:
+            key = _canon_ms_key(fn)
+            if key in lookup:
+                selected_cols.append(lookup[key])
+            else:
+                missing.append(fn)
+
+        if missing:
+            raise KeyError(
+                "MS sample columns not found for these metadata entries:\n"
+                f"  {missing}\n"
+                f"First MS columns (sample-like): {value_cols[:10]}"
+            )
+
+        MSdata = MS[selected_cols]
         MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
 
         MergeDF = pd.concat([NMR, MSdata / 1e8], ignore_index=True)
@@ -413,6 +415,7 @@ def prepare_data_by_option(option, Ordered_Samples,
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
 
         filename = "MergeDF_NMR_MS.csv"
+
 
     elif option == 3:  # NMR + BioAct
         ppm = NMR["Unnamed: 0"]
@@ -432,14 +435,34 @@ def prepare_data_by_option(option, Ordered_Samples,
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
 
         filename = "MergeDF_NMR_BioAct.csv"
-
     elif option == 4:  # MS + BioAct
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        #MSdata = MSdata[Ordered_MS_filename]
-        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
-        BioActdata = BioAct.iloc[:, 1:]
+        # Map metadata filenames to actual MS columns
+        non_value_cols = {"row ID", "row m/z", "row retention time"}
+        value_cols = [c for c in MS.columns if str(c) not in non_value_cols]
+        lookup = {_canon_ms_key(c): c for c in value_cols}
+
+        selected_cols = []
+        missing = []
+        for fn in Ordered_MS_filename:
+            key = _canon_ms_key(fn)
+            if key in lookup:
+                selected_cols.append(lookup[key])
+            else:
+                missing.append(fn)
+
+        if missing:
+            raise KeyError(
+                "MS sample columns not found for these metadata entries:\n"
+                f"  {missing}\n"
+                f"First MS columns (sample-like): {value_cols[:10]}"
+            )
+
+        MSdata = MS[selected_cols].copy()
+        MSdata.rename(columns=dict(zip(selected_cols, Ordered_Samples)), inplace=True)
+
+        BioActdata = BioAct.iloc[:, 1:].copy()
         BioActdata = BioActdata[Ordered_BioAct_filename]
         BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
 
@@ -448,6 +471,7 @@ def prepare_data_by_option(option, Ordered_Samples,
         new_axis = pd.Series(np.arange(0, len(MSdata) + len(BioActdata)))
 
         filename = "MergeDF_MS_BioAct.csv"
+
 
     elif option == 5:  # NMR only
         ppm = NMR["Unnamed: 0"]
