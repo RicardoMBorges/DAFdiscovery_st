@@ -723,23 +723,23 @@ if metadata_file:
 
     nmr_data = ms_data = bio_data = None
 
-	if "NMR" in data_in_use:
-	    nmr_data_file = st.file_uploader("Upload NMR data (CSV/TSV)", type=["csv", "tsv", "txt"])
-	    if nmr_data_file:
-	        nmr_data = read_csv_safely(nmr_data_file)
+if "NMR" in data_in_use:
+    nmr_data_file = st.file_uploader("Upload NMR data (CSV/TSV)", type=["csv", "tsv", "txt"])
+    if nmr_data_file:
+        nmr_data = read_csv_safely(nmr_data_file)
 
-            ppm = nmr_data[nmr_data.columns[0]]
-            st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
-            fig = go.Figure()
-            for col in nmr_data.columns[1:]:
-                fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=col, opacity=0.5))
-            fig.update_layout(title="NMR Raw Spectra", xaxis_title="ppm", yaxis_title="Intensity",
-                              xaxis=dict(autorange='reversed'), height=400)
-            st.plotly_chart(fig, use_container_width=True)
+		ppm = nmr_data[nmr_data.columns[0]]
+        st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
+        fig = go.Figure()
+        for col in nmr_data.columns[1:]:
+            fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=col, opacity=0.5))
+        fig.update_layout(title="NMR Raw Spectra", xaxis_title="ppm", yaxis_title="Intensity",
+                          xaxis=dict(autorange='reversed'), height=400)
+        st.plotly_chart(fig, use_container_width=True)
 
-            html_nmr = pio.to_html(fig, full_html=False)
-            st.download_button("⬇️ Download NMR Plot (HTML)", data=html_nmr,
-                               file_name="nmr_plot.html", mime="text/html")
+        html_nmr = pio.to_html(fig, full_html=False)
+        st.download_button("⬇️ Download NMR Plot (HTML)", data=html_nmr,
+                           file_name="nmr_plot.html", mime="text/html")
 
 	if "MS" in data_in_use:
 	    ms_data_file = st.file_uploader("Upload MS data (CSV/TSV)", type=["csv", "tsv", "txt"])
