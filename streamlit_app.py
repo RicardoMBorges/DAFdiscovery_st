@@ -13,11 +13,10 @@ from scipy import stats
 from scipy.optimize import curve_fit
 from PIL import Image
 
-def STOCSY(target, X, rt_values, mode="linear"):
+def STOCSY(target, X, rt_values, mode="linear", save_label=None):
     """
     Structured STOCSY: Compute correlation and covariance between a target signal and a matrix of signals.
     """
-
     import os
     import mpld3
     import math
