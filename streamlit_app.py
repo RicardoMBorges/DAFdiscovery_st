@@ -108,7 +108,8 @@ def STOCSY(target, X, rt_values, mode="linear", save_label=None):
     else:
         axs.set_xlim(x.min(), x.max())
         axs.set_ylim(y.min(), y.max())
-
+	y_min, y_max = y.min(), y.max()
+	
     # Ticks do eixo X (ppm)
     min_rt = rt_values.min()
     max_rt = rt_values.max()
@@ -167,7 +168,8 @@ def STOCSY(target, X, rt_values, mode="linear", save_label=None):
 
     if not os.path.exists('images'):
         os.mkdir('images')
-    plt.savefig(f"images/stocsy_from_{target}_{mode}.pdf", transparent=True, dpi=300)
+    label = save_label if save_label is not None else f"{target}"
+	plt.savefig(f"images/stocsy_from_{target}_{mode}.pdf", transparent=True, dpi=300)
     html_str = mpld3.fig_to_html(fig)
     with open(f"images/stocsy_interactive_{target}min_{mode}.html", "w") as f:
         f.write(html_str)
@@ -373,7 +375,8 @@ def prepare_data_by_option(option, Ordered_Samples,
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
     elif option == 2:  # NMR + MS
-        ppm = NMR["Unnamed: 0"]
+        #ppm = NMR["Unnamed: 0"]
+		ppm = NMR.iloc[:, 0]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
