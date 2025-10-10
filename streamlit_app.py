@@ -766,18 +766,41 @@ def read_csv_safely(uploaded_file, prefer: str | None = None) -> pd.DataFrame:
 import re
 from pathlib import Path
 
-def _canon_ms_key(s: str) -> str:
+import re
+from pathlib import Path
+
+def _canon_sample_key(s: str) -> str:
     """
-    Canonical key for matching metadata MS_filename to MS table columns.
-    - strip path
-    - drop any trailing ' Peak area'/' Height'/' Area' etc.
+    Canonical key for matching metadata *_filename columns to table headers.
+    - strip path and extension
+    - drop common suffix tokens (e.g., 'Peak area', 'Area', 'Height')
+    - remove bracketed parts and spaces/underscores/hyphens differences
     - lowercase
     """
     s = str(s).strip()
-    base = Path(s).name              # drop folders
-    base = base.split(" ")[0]        # keep token before first space
-    base = re.sub(r"\.(?:mzml|mzxml|csv)$", "", base, flags=re.I)  # drop extension
+    base = Path(s).name
+    base = re.sub(r"\.(?:csv|tsv|txt|xlsx|xls|mzml|mzxml)$", "", base, flags=re.I)
+    base = re.sub(r"\[.*?\]|\(.*?\)", "", base)         # drop bracketed qualifiers
+    base = re.sub(r"(?:\s+Peak\s*area|\s*Area|\s*Height)$", "", base, flags=re.I)
+    base = re.sub(r"[^A-Za-z0-9]+", "", base)           # collapse to alnum
     return base.lower()
+
+def _resolve_columns_by_canon(requested_names, available_columns):
+    """
+    Map a list of requested names (from metadata) to actual dataframe columns,
+    using canonicalization on both sides. Returns (selected_cols, missing).
+    """
+    lookup = {_canon_sample_key(c): c for c in available_columns}
+    selected = []
+    missing  = []
+    for req in requested_names:
+        key = _canon_sample_key(req)
+        real = lookup.get(key)
+        if real is None:
+            missing.append(req)
+        else:
+            selected.append(real)
+    return selected, missing
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
