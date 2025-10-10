@@ -547,8 +547,6 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
     return corr, covar, MSinfo_corr, fig
 
 
-
-
 # =======================================
 # 📈 3. NMR DATA PROCESSING
 # =======================================
@@ -644,14 +642,13 @@ st.markdown("""
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
-metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
+metadata_file = st.file_uploader("Upload your Metadata CSV file:", type=["csv", "txt", "tsv"])
 
 if metadata_file:
-    metadata_df = pd.read_csv(metadata_file, sep=";")
+    metadata_df = read_csv_safely(metadata_file)  # << use robust reader
     st.success("✅ Metadata loaded.")
-    st.markdown("📋 Preview do Metadata CSV:")
-    st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
-
+    st.caption(f"Detected columns: {', '.join(map(str, metadata_df.columns))}")
+    st.dataframe(metadata_df.head(), use_container_width=True)
 
     (
         ordered_samples,
@@ -669,11 +666,10 @@ if metadata_file:
 
     nmr_data = ms_data = bio_data = None
 
-    if "NMR" in data_in_use:
-        nmr_data_file = st.file_uploader("Upload NMR data CSV", type="csv")
-        if nmr_data_file:
-            nmr_data = pd.read_csv(nmr_data_file)
-            st.subheader("🧪 NMR Preview")
+	if "NMR" in data_in_use:
+	    nmr_data_file = st.file_uploader("Upload NMR data (CSV/TSV)", type=["csv", "tsv", "txt"])
+	    if nmr_data_file:
+	        nmr_data = read_csv_safely(nmr_data_file)
 
             ppm = nmr_data[nmr_data.columns[0]]
             st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
@@ -688,17 +684,18 @@ if metadata_file:
             st.download_button("⬇️ Download NMR Plot (HTML)", data=html_nmr,
                                file_name="nmr_plot.html", mime="text/html")
 
-    if "MS" in data_in_use:
-        ms_data_file = st.file_uploader("Upload MS data CSV", type="csv")
-        if ms_data_file:
-            ms_data = pd.read_csv(ms_data_file)
+	if "MS" in data_in_use:
+	    ms_data_file = st.file_uploader("Upload MS data (CSV/TSV)", type=["csv", "tsv", "txt"])
+	    if ms_data_file:
+	        ms_data = read_csv_safely(ms_data_file)
             st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
 
-    if "BioAct" in data_in_use:
-        bio_data_file = st.file_uploader("Upload BioActivity data CSV", type="csv")
-        if bio_data_file:
-            bio_data = pd.read_csv(bio_data_file, sep=";")
-            st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
+	if "BioAct" in data_in_use:
+	    bio_data_file = st.file_uploader("Upload BioActivity (CSV/TSV)", type=["csv", "tsv", "txt"])
+	    if bio_data_file:
+	        # if you *know* your BioAct is semicolon-separated, pass prefer=";"
+	        bio_data = read_csv_safely(bio_data_file)   # or read_csv_safely(bio_data_file, prefer=";")
+	        st.markdown("**📁 BioActivity column headers:** " + ", ".join(map(str, bio_data.columns)))
 
     # --- Merge and STOCSY ---
     if st.button("▶️ Run Merge and STOCSY"):
