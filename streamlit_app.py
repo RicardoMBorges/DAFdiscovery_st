@@ -180,54 +180,112 @@ def STOCSY(target, X, rt_values, mode="linear"):
 # Função para exibir o scatter plot de MS STOCSY
 import plotly.express as px
 
-def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
+def show_stocsy_ms_correlation_plot(msinfo_corr: pd.DataFrame, label: str = "BioAct"):
     """
-    Display interactive Plotly scatter plot for MS STOCSY correlation results.
+    Display an interactive Plotly scatter plot for MS STOCSY correlation results.
 
-    Parameters
-    ----------
-    msinfo_corr : pd.DataFrame
-        Correlation and covariance information merged with the MS feature table.
-    label : str
-        Suffix used in the correlation column (e.g., 'BioAct', '2.54ppm')
+    This version is robust to column name variants (case/spacing/slashes).
+    Expected columns (any reasonable variant is accepted):
+      - ID:                ["row id", "feature id", "id"]
+      - Retention time:    ["row retention time", "retention time", "rt", "rt(min)", "rt_min"]
+      - m/z:               ["row m/z", "row mz", "m/z", "mz", "precursor m/z", "precursor_mz"]
+      - correlation:       any column starting with "corr_" (prefer "corr_{label}")
     """
+    import plotly.express as px
+
+    def _norm(s: str) -> str:
+        return (
+            str(s)
+            .strip()
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+            .replace("/", "_")
+            .replace("__", "_")
+        )
+
+    def _first_match(norm2orig: dict, candidates: list[str]) -> str:
+        for cand in candidates:
+            key = _norm(cand)
+            if key in norm2orig:
+                return norm2orig[key]
+        # try partial contains (fallback)
+        for key, orig in norm2orig.items():
+            for cand in candidates:
+                if _norm(cand) in key:
+                    return orig
+        raise KeyError(f"Could not find any of: {candidates}\nAvailable: {list(norm2orig.values())}")
+
+    # Work on a copy; keep the ORIGINAL column names for plotting/hover
+    df = msinfo_corr.copy()
+
+    # Build normalized lookup map
+    norm2orig = {_norm(c): c for c in df.columns}
+
+    # Resolve columns robustly
+    id_col = _first_match(
+        norm2orig,
+        ["row id", "feature id", "id", "row_index", "rowid", "feature_id"]
+    )
+    rt_col = _first_match(
+        norm2orig,
+        ["row retention time", "retention time", "rt", "rt(min)", "rt_min", "row_rt"]
+    )
+    mz_col = _first_match(
+        norm2orig,
+        ["row m/z", "row mz", "m/z", "mz", "precursor m/z", "precursor_mz", "precursor_mz"]
+    )
+
+    # Correlation column: prefer exact "corr_{label}" (case-insensitive), otherwise first starting with "corr_"
+    corr_candidates = [c for c in df.columns if _norm(c) == _norm(f"corr_{label}")]
+    if not corr_candidates:
+        corr_candidates = [c for c in df.columns if _norm(c).startswith("corr_")]
+    if not corr_candidates:
+        raise KeyError(
+            f"Could not find a correlation column (e.g., 'corr_{label}' or any 'corr_*'). "
+            f"Available columns: {list(df.columns)}"
+        )
+    corr_col = corr_candidates[0]
+
+    # Size scale (square the absolute correlation for a nicer dynamic range)
     try:
-        st.subheader("💥 Correlation Plot of MS Features")
+        size_series = (df[corr_col].abs() ** 2).clip(lower=0)
+    except Exception:
+        # if something weird is in the column, coerce and retry
+        size_series = pd.to_numeric(df[corr_col], errors="coerce").abs() ** 2
 
-        df_msplot = msinfo_corr.copy()
-        df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
+    st.subheader("💥 Correlation Plot of MS Features")
+    corr_plotMS = px.scatter(
+        df,
+        x=rt_col,
+        y=mz_col,
+        color=corr_col,
+        size=size_series,
+        opacity=0.7,
+        hover_data=[id_col, rt_col, mz_col, corr_col],
+        color_continuous_scale=px.colors.sequential.Jet,
+        title=f"Correlation Plot of MS Features (STOCSY – {label})"
+    )
 
-        id_col = [col for col in df_msplot.columns if "row ID" in col][0]
-        rt_col = [col for col in df_msplot.columns if "retention" in col][0]
-        mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
-        corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
+    corr_plotMS.update_layout(
+        font_color="black",
+        title_font_color="black",
+        font=dict(size=16),
+        height=500,
+        xaxis_title="Retention time",
+        yaxis_title="m/z"
+    )
 
-        corr_plotMS = px.scatter(
-            df_msplot,
-            x=rt_col,
-            y=mz_col,
-            color=corr_col,
-            size=np.abs(df_msplot[corr_col])**2,
-            opacity=0.7,
-            hover_data=[id_col, rt_col, mz_col, corr_col],
-            color_continuous_scale=px.colors.sequential.Jet,
-            title=f"Correlation Plot of MS Features (STOCSY – {label})"
-        )
+    st.plotly_chart(corr_plotMS, use_container_width=True)
 
-        corr_plotMS.update_layout(
-            font_color="black",
-            title_font_color="black",
-            font=dict(size=16),
-            height=500
-        )
+    html_plot = corr_plotMS.to_html(full_html=False)
+    st.download_button(
+        f"⬇️ Download MS Correlation Plot (HTML) — {label}",
+        data=html_plot,
+        file_name=f"stocsy_correlation_MS_{label}.html",
+        mime="text/html"
+    )
 
-        st.plotly_chart(corr_plotMS, use_container_width=True)
-
-        html_plot = corr_plotMS.to_html(full_html=False)
-        st.download_button(f"⬇️ Download MS Correlation Plot (HTML) — {label}",
-                           data=html_plot,
-                           file_name=f"stocsy_correlation_MS_{label}.html",
-                           mime="text/html")
     except Exception as e:
         st.warning("⚠️ Could not display MS correlation plot.")
         st.exception(e)
