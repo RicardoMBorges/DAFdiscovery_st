@@ -437,26 +437,6 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     """
     Runs STOCSY using a selected driver, calculates correlation and covariance,
     maps results to MSinfo (if available), and exports them to a CSV file.
-
-    Parameters:
-    -----------
-    driver : float
-        The driver value (can be a ppm or synthetic value from new_axis).
-    MergeDF : pd.DataFrame
-        The merged data matrix with NMR, MS, and/or BioAct data.
-    axis : pd.Series
-        The full axis of variables (including ppm, MS and/or BioAct).
-    MSinfo : pd.DataFrame or None
-        The MSinfo dataframe containing "row ID", "row m/z", "row retention time". Can be None.
-    output_prefix : str
-        Prefix to use in naming output files (e.g., "fromBioAct", or a ppm value).
-    
-    Returns:
-    --------
-    corr : np.ndarray
-    covar : np.ndarray
-    MSinfo_corr : pd.DataFrame or None
-    fig : matplotlib.figure.Figure
     """
 
     # Run STOCSY
@@ -466,35 +446,54 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     corrDF = pd.DataFrame(corr, columns=[f'corr_{output_prefix}'])
     covarDF = pd.DataFrame(covar, columns=[f'covar_{output_prefix}'])
 
-    # Handle case where MSinfo is available
     MSinfo_corr = None
-    if MSinfo is not None and isinstance(MSinfo, pd.DataFrame):
+    if MSinfo is not None and isinstance(MSinfo, pd.DataFrame) and len(MSinfo) > 0:
         try:
-            corrDF_MS = corrDF.iloc[-len(MSinfo):].reset_index(drop=True)
-            covarDF_MS = covarDF.iloc[-len(MSinfo):].reset_index(drop=True)
+            # --- Robust MS slice detection ---
+            # axis is: [NMR (descending ppm)] + [MS (synthetic, ascending)] + [BioAct (synthetic, ascending)]
+            ax = np.asarray(axis).astype(float)
+            diffs = np.diff(ax)
+
+            # Find the point where ppm (descending) stops: last index where diff < 0 before it turns >= 0
+            # If axis is strictly descending first, the first non-negative diff marks the transition.
+            transition_idx = np.argmax(diffs >= 0)  # index in diffs; NMR rows = transition_idx + 1
+            n_nmr = int(transition_idx + 1) if diffs.size > 0 else 0
+
+            total_rows = len(ax)
+            ms_rows = int(len(MSinfo))
+
+            # If there is BioAct appended after MS, its length is:
+            n_bio = max(total_rows - n_nmr - ms_rows, 0)
+
+            # MS rows start right after NMR and span ms_rows
+            ms_start = n_nmr
+            ms_end = ms_start + ms_rows  # exclusive
+
+            if ms_end > len(corrDF):
+                # Fallback: try last ms_rows before the end (robust against exotic axes)
+                ms_end = len(corrDF) - n_bio
+                ms_start = max(ms_end - ms_rows, 0)
+
+            corrDF_MS = corrDF.iloc[ms_start:ms_end].reset_index(drop=True)
+            covarDF_MS = covarDF.iloc[ms_start:ms_end].reset_index(drop=True)
 
             MSinfo_corr = pd.concat([MSinfo.reset_index(drop=True), corrDF_MS], axis=1)
             MSinfo_corr_covar = pd.concat([MSinfo_corr, covarDF_MS], axis=1)
 
-            # Export to CSV
-            if not os.path.exists("data"):
-                os.makedirs("data")
-
+            # Export
+            os.makedirs("data", exist_ok=True)
             corr_filename = f"data/MSinfo_corr_{output_prefix}.csv"
             covar_filename = f"data/MSinfo_corr_covar_{output_prefix}.csv"
-
             MSinfo_corr.to_csv(corr_filename, sep=",", index=False)
             MSinfo_corr_covar.to_csv(covar_filename, sep=",", index=False)
-
             print(f"✅ Correlation file saved to {corr_filename}")
             print(f"✅ Correlation + Covariance file saved to {covar_filename}")
+
         except Exception as e:
             print(f"⚠️ Could not export MSinfo correlation files: {e}")
             MSinfo_corr = None
 
     return corr, covar, MSinfo_corr, fig
-
-
 
 
 def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear", driver_value=None):
