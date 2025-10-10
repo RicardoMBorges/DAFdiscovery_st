@@ -286,9 +286,9 @@ def show_stocsy_ms_correlation_plot(msinfo_corr: pd.DataFrame, label: str = "Bio
         mime="text/html"
     )
 
-    except Exception as e:
-        st.warning("⚠️ Could not display MS correlation plot.")
-        st.exception(e)
+    #except Exception as e:
+        #st.warning("⚠️ Could not display MS correlation plot.")
+        #st.exception(e)
 
 # === Original dafdiscovery_process.py functions (cleaned) ===
 
