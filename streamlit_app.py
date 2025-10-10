@@ -697,7 +697,7 @@ if metadata_file:
     if "BioAct" in data_in_use:
         bio_data_file = st.file_uploader("Upload BioActivity data CSV", type="csv")
         if bio_data_file:
-            bio_data = pd.read_csv(bio_data_file)
+            bio_data = pd.read_csv(bio_data_file, sep=";")
             st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
 
     # --- Merge and STOCSY ---
