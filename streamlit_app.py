@@ -108,7 +108,7 @@ def STOCSY(target, X, rt_values, mode="linear", save_label=None):
     else:
         axs.set_xlim(x.min(), x.max())
         axs.set_ylim(y.min(), y.max())
-	y_min, y_max = y.min(), y.max()
+	#y_min, y_max = y.min(), y.max()
 	
     # Ticks do eixo X (ppm)
     min_rt = rt_values.min()
