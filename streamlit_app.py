@@ -436,7 +436,7 @@ def prepare_data_by_option(option, Ordered_Samples,
     elif option == 4:  # MS + BioAct
         MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
         MSinfo = MS[["row ID", "row m/z", "row retention time"]]
-        MSdata = MSdata[Ordered_MS_filename]
+        #MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
         BioActdata = BioAct.iloc[:, 1:]
