@@ -450,6 +450,29 @@ def _raise_or_log_missing(context: str,
 # ===============================
 # ⚙️ 2. DATA MERGING BY OPTION
 # ===============================
+
+from pathlib import Path
+
+def _make_unique_names(sample_list, key_list=None):
+    """
+    Make per-column display names unique.
+    If a sample repeats, append '__<file-stem>' (or '__2', '__3' fallback).
+    sample_list and key_list should be aligned to the resolved columns.
+    """
+    out, seen = [], {}
+    for i, base in enumerate(sample_list):
+        base = str(base)
+        stem = None
+        if key_list is not None and i < len(key_list) and key_list[i] is not None:
+            stem = Path(str(key_list[i])).stem
+        if base not in seen:
+            seen[base] = 1
+            out.append(base)
+        else:
+            seen[base] += 1
+            out.append(f"{base}__{stem or seen[base]}")
+    return out
+
 import os
 import numpy as np
 import pandas as pd
@@ -472,7 +495,12 @@ def prepare_data_by_option(option, Ordered_Samples,
         )
         _raise_or_log_missing("NMR", NMR, nmr_missing)
         NMR = pd.concat([ppm, nmr_block[nmr_cols]], axis=1)
-        NMR.columns = ["Unnamed: 0"] + Ordered_Samples[:len(nmr_cols)]
+        # NMR
+		nmr_names = _make_unique_names(
+		    sample_list=Ordered_Samples[:len(nmr_cols)],
+		    key_list=(Ordered_NMR_filename[:len(nmr_cols)] if Ordered_NMR_filename else None)
+		)
+		NMR.columns = ["Unnamed: 0"] + nmr_names
 
     # ---------- MS (when present) ----------
     if option in (1, 2, 4):
@@ -483,7 +511,12 @@ def prepare_data_by_option(option, Ordered_Samples,
         )
         _raise_or_log_missing("MS", MS, ms_missing)
         MSdata = MSdata_raw[ms_cols].copy()
-        MSdata.columns = Ordered_Samples[:len(ms_cols)]
+        # MS
+		ms_names = _make_unique_names(
+		    sample_list=Ordered_Samples[:len(ms_cols)],
+		    key_list=(Ordered_MS_filename[:len(ms_cols)] if Ordered_MS_filename else None)
+		)
+		MSdata.columns = ms_names
 
     # ---------- BioAct (when present) ----------
     if option in (1, 3, 4):
@@ -493,7 +526,12 @@ def prepare_data_by_option(option, Ordered_Samples,
         )
         _raise_or_log_missing("BioActivity", BioAct, bio_missing)
         BioActdata = bio_block[bio_cols].copy()
-        BioActdata.columns = Ordered_Samples[:len(bio_cols)]
+        # BioAct
+		bio_names = _make_unique_names(
+		    sample_list=Ordered_Samples[:len(bio_cols)],
+		    key_list=(Ordered_BioAct_filename[:len(bio_cols)] if Ordered_BioAct_filename else None)
+		)
+		BioActdata.columns = bio_names
 
     # ---------- Build merged matrix & axis ----------
     if option == 1:  # NMR + MS + BioAct
@@ -547,8 +585,6 @@ def prepare_data_by_option(option, Ordered_Samples,
     MergeDF.to_csv(f"data/{filename}", sep=",", index=False)
     print(f"✅ Data merged and saved to 'data/{filename}'")
     return MergeDF, new_axis, MSinfo
-
-
 
 # =======================================
 # 📈 3. STOCSY ANALYSIS AND CORRELATIONS
@@ -668,8 +704,6 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
     )
 
     return corr, covar, MSinfo_corr, fig
-
-
 
 
 # =======================================
