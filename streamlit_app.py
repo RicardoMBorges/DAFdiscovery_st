@@ -16,6 +16,7 @@ from PIL import Image
 def STOCSY(target, X, rt_values, mode="linear"):
     """
     Structured STOCSY: Compute correlation and covariance between a target signal and a matrix of signals.
+    Robust version: handles NaN/Inf, safe axis limits, resilient tick logic.
     """
 
     import os
@@ -24,133 +25,203 @@ def STOCSY(target, X, rt_values, mode="linear"):
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.collections import LineCollection
-    from scipy import stats
     from scipy.optimize import curve_fit
     import pandas as pd
 
-    def exp_model(x, a, b, c):
-        return a * np.exp(-b * x) + c
+    # ----- models -----
+    def exp_model(x, a, b, c):        return a * np.exp(-b * x) + c
+    def sin_model(x, a, b, c, d):     return a * np.sin(b * x + c) + d
+    def sigmoid_model(x, L, k, x0):   return L / (1 + np.exp(-k * (x - x0)))
+    def gauss_model(x, a, mu, s, c):  return a * np.exp(-(x - mu)**2 / (2 * s**2)) + c
 
-    def sin_model(x, a, b, c, d):
-        return a * np.sin(b * x + c) + d
-
-    def sigmoid_model(x, L, k, x0):
-        return L / (1 + np.exp(-k * (x - x0)))
-
-    def gauss_model(x, a, mu, sigma, c):
-        return a * np.exp(-(x - mu)**2 / (2 * sigma**2)) + c
-
-    if isinstance(target, float):
-        idx = np.abs(rt_values - target).idxmin()
+    # ----- select target vector -----
+    if isinstance(target, (int, float, np.floating)):
+        # find row in axis closest to target
+        if isinstance(rt_values, pd.Series):
+            idx = (rt_values - float(target)).abs().idxmin()
+        else:
+            # rt_values can be array-like
+            rv = np.asarray(rt_values, dtype=float)
+            idx = int(np.nanargmin(np.abs(rv - float(target))))
         target_vect = X.iloc[idx]
     else:
         target_vect = target
 
+    # ensure arrays for fitting
+    x_t = target_vect.values.astype(float)
+
+    # ----- correlations row-by-row -----
     corr = []
     for i in range(X.shape[0]):
-        x = target_vect.values
-        y = X.iloc[i].values
+        y_i = X.iloc[i].values.astype(float)
+        r = 0.0
         try:
             if mode == "linear":
-                r = np.corrcoef(x, y)[0, 1]
+                r = np.corrcoef(x_t, y_i)[0, 1]
             elif mode == "exponential":
-                popt, _ = curve_fit(exp_model, x, y, maxfev=10000)
-                r = np.corrcoef(y, exp_model(x, *popt))[0, 1]
+                popt, _ = curve_fit(exp_model, x_t, y_i, maxfev=10000)
+                r = np.corrcoef(y_i, exp_model(x_t, *popt))[0, 1]
             elif mode == "sinusoidal":
                 guess_freq = 1 / (2 * np.pi)
-                popt, _ = curve_fit(sin_model, x, y, p0=[1, guess_freq, 0, 0], maxfev=10000)
-                r = np.corrcoef(y, sin_model(x, *popt))[0, 1]
+                popt, _ = curve_fit(sin_model, x_t, y_i, p0=[1, guess_freq, 0, 0], maxfev=10000)
+                r = np.corrcoef(y_i, sin_model(x_t, *popt))[0, 1]
             elif mode == "sigmoid":
-                x_scaled = (x - np.min(x)) / (np.max(x) - np.min(x))
-                y_scaled = (y - np.min(y)) / (np.max(y) - np.min(y))
-                popt, _ = curve_fit(sigmoid_model, x_scaled, y_scaled, p0=[1, 1, 0.5], maxfev=10000)
-                r = np.corrcoef(y_scaled, sigmoid_model(x_scaled, *popt))[0, 1]
+                # scale to [0,1] to stabilize
+                x_sc = (x_t - np.nanmin(x_t)) / (np.nanmax(x_t) - np.nanmin(x_t) + 1e-12)
+                y_sc = (y_i - np.nanmin(y_i)) / (np.nanmax(y_i) - np.nanmin(y_i) + 1e-12)
+                popt, _ = curve_fit(sigmoid_model, x_sc, y_sc, p0=[1, 1, 0.5], maxfev=10000)
+                r = np.corrcoef(y_sc, sigmoid_model(x_sc, *popt))[0, 1]
             elif mode == "gaussian":
-                mu_init = x[np.argmax(y)]
-                sigma_init = np.std(x)
-                popt, _ = curve_fit(gauss_model, x, y, p0=[1, mu_init, sigma_init, 0], maxfev=10000)
-                r = np.corrcoef(y, gauss_model(x, *popt))[0, 1]
+                mu_init = x_t[np.nanargmax(y_i)]
+                sigma_init = np.nanstd(x_t) + 1e-12
+                popt, _ = curve_fit(gauss_model, x_t, y_i, p0=[1, mu_init, sigma_init, 0], maxfev=10000)
+                r = np.corrcoef(y_i, gauss_model(x_t, *popt))[0, 1]
             else:
                 raise ValueError("Invalid mode")
         except Exception:
-            r = 0
+            r = 0.0
+        # sanitize correlation
+        if not np.isfinite(r):
+            r = 0.0
         corr.append(r)
 
-    corr = np.array(corr)
-    covar = (target_vect - target_vect.mean()) @ (X.T - np.tile(X.T.mean(), (X.T.shape[0], 1))) / (X.T.shape[0] - 1)
+    corr = np.array(corr, dtype=float)
 
-    x = np.linspace(0, len(covar), len(covar))
-    y = covar
-    points = np.array([x, y]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    # ----- covariance vs every row (population with n-1 denom) -----
+    # (X: rows = variables, cols = samples)
+    Xt = X.to_numpy(dtype=float)
+    tv = target_vect.to_numpy(dtype=float)
+    tvc = tv - np.nanmean(tv)
+    Xc  = Xt - np.nanmean(Xt, axis=1, keepdims=True)
+    # dot over samples (columns)
+    with np.errstate(invalid="ignore"):
+        covar = (tvc @ Xc.T) / max(1, Xt.shape[1] - 1)
+    covar = np.array(covar, dtype=float)
+    if not np.isfinite(covar).any():
+        covar = np.zeros_like(covar)
+
+    # ----- build line collection -----
+    x = np.linspace(0, len(covar) - 1, len(covar))
+    y = covar.copy()
+    y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+    pts = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([pts[:-1], pts[1:]], axis=1)
 
     fig, axs = plt.subplots(1, 1, figsize=(16, 4), sharex=True, sharey=True)
-    norm = plt.Normalize(corr.min(), corr.max())
+
+    cmin = float(np.nanmin(corr)) if np.isfinite(corr).any() else -1.0
+    cmax = float(np.nanmax(corr)) if np.isfinite(corr).any() else  1.0
+    if cmin == cmax:
+        cmin, cmax = cmin - 1e-6, cmax + 1e-6
+    norm = plt.Normalize(cmin, cmax)
+
     lc = LineCollection(segments, cmap='jet', norm=norm)
     lc.set_array(corr)
     lc.set_linewidth(2)
     axs.add_collection(lc)
     fig.colorbar(lc, ax=axs)
 
-    # === ZOOM X e Y com base na região NMR ===
-    if isinstance(rt_values, pd.Series):
-        nmr_len = int(len(rt_values) / X.shape[1]) if X.shape[1] > 1 else len(rt_values)
-        nmr_start = rt_values.iloc[0]
-        nmr_end = rt_values.iloc[nmr_len - 1]
-        x_start = int((nmr_start - rt_values.min()) / (rt_values.max() - rt_values.min()) * len(covar))
-        x_end = int((nmr_end - rt_values.min()) / (rt_values.max() - rt_values.min()) * len(covar))
-        if x_start > x_end:
-            x_start, x_end = x_end, x_start
-        y_nmr_region = y[x_start:x_end]
-        y_min = np.min(y_nmr_region)
-        y_max = np.max(y_nmr_region)
-        axs.set_xlim(x_end, x_start)  # eixo ppm decrescente
-        axs.set_ylim(y_min, y_max)
+    # ----- robust axis limits -----
+    if np.isfinite(y).any():
+        y_global_min = float(np.nanmin(y))
+        y_global_max = float(np.nanmax(y))
+        if y_global_min == y_global_max:
+            y_global_min -= 1e-6
+            y_global_max += 1e-6
     else:
-        axs.set_xlim(x.min(), x.max())
-        axs.set_ylim(y.min(), y.max())
+        y_global_min, y_global_max = -1.0, 1.0
 
-    # Ticks do eixo X (ppm)
-    min_rt = rt_values.min()
-    max_rt = rt_values.max()
-    ticksx = []
-    tickslabels = []
-    if max_rt < 30:
-        ticks = np.linspace(math.ceil(min_rt), int(max_rt), int(max_rt) - math.ceil(min_rt) + 1)
+    x_min, x_max = float(np.nanmin(x)), float(np.nanmax(x))
+
+    # Default y-range used by hover lines too
+    y_min, y_max = y_global_min, y_global_max
+
+    # === Attempt NMR-region zoom (fallback to global if invalid) ===
+    if isinstance(rt_values, pd.Series):
+        n_total = len(rt_values)
+        # heuristic: first half as NMR window if we can't infer better
+        x_start = 0
+        x_end   = max(1, min(n_total, int(n_total * 0.5)))
+        y_nmr_region = y[x_start:x_end]
+        if y_nmr_region.size > 0 and np.isfinite(y_nmr_region).any():
+            y_min = float(np.nanmin(y_nmr_region))
+            y_max = float(np.nanmax(y_nmr_region))
+            if y_min == y_max:
+                y_min -= 1e-6
+                y_max += 1e-6
+            # ppm axis decreasing
+            axs.set_xlim(float(x_end), float(x_start))
+            axs.set_ylim(y_min, y_max)
+        else:
+            axs.set_xlim(x_min, x_max)
+            axs.set_ylim(y_global_min, y_global_max)
+            y_min, y_max = y_global_min, y_global_max
     else:
-        ticks = np.linspace(math.ceil(min_rt / 10.0) * 10,
-                             math.ceil(max_rt / 10.0) * 10 - 10,
-                             math.ceil(max_rt / 10.0) - math.ceil(min_rt / 10.0))
-    currenttick = 0
-    for rt_val in rt_values:
-        if currenttick < len(ticks) and rt_val > ticks[currenttick]:
-            position = int((rt_val - min_rt) / (max_rt - min_rt) * x.max())
-            if position < len(x):
-                ticksx.append(x[position])
-                tickslabels.append(ticks[currenttick])
-            currenttick += 1
-    plt.xticks(ticksx, tickslabels, fontsize=12)
+        axs.set_xlim(x_min, x_max)
+        axs.set_ylim(y_global_min, y_global_max)
+        y_min, y_max = y_global_min, y_global_max
+
+    # ----- ticks (robust) -----
+    try:
+        rv = rt_values.values if isinstance(rt_values, pd.Series) else np.asarray(rt_values)
+        rv = rv.astype(float)
+        rv = rv[np.isfinite(rv)]
+        rmin = float(np.nanmin(rv))
+        rmax = float(np.nanmax(rv))
+        if rmin == rmax:
+            raise ValueError
+
+        ticksx, tickslabels = [], []
+        if rmax < 30:
+            raw_ticks = np.linspace(math.ceil(rmin), int(rmax), max(1, int(rmax) - math.ceil(rmin) + 1))
+        else:
+            raw_ticks = np.linspace(
+                math.ceil(rmin / 10.0) * 10,
+                max(math.ceil(rmin / 10.0) * 10, math.ceil(rmax / 10.0) * 10 - 10),
+                max(1, math.ceil(rmax / 10.0) - math.ceil(rmin / 10.0))
+            )
+
+        for t in raw_ticks:
+            pos = int((t - rmin) / (rmax - rmin) * (len(x) - 1))
+            pos = max(0, min(pos, len(x) - 1))
+            ticksx.append(x[pos])
+            tickslabels.append(t)
+        plt.xticks(ticksx, tickslabels, fontsize=12)
+    except Exception:
+        # leave default ticks if mapping fails
+        pass
 
     axs.set_xlabel('ppm', fontsize=14)
-    axs.set_ylabel(f"Covariance with \n signal at {target:.2f} ppm", fontsize=14)
-    axs.set_title(f'STOCSY from signal at {target:.2f} ppm ({mode} model)', fontsize=16)
+    axs.set_ylabel(f"Covariance with \n signal at {float(target):.2f} ppm", fontsize=14)
+    axs.set_title(f'STOCSY from signal at {float(target):.2f} ppm ({mode} model)', fontsize=16)
 
+    # ----- hover helpers -----
     text = axs.text(1, 1, '')
     lnx = plt.plot([60, 60], [0, 1.5], color='black', linewidth=0.3)
     lny = plt.plot([0, 100], [1.5, 1.5], color='black', linewidth=0.3)
-    lnx[0].set_linestyle('None')
-    lny[0].set_linestyle('None')
+    lnx[0].set_linestyle('None'); lny[0].set_linestyle('None')
+
+    # Precompute for mapping event.x to rt value
+    try:
+        rv = rt_values.values if isinstance(rt_values, pd.Series) else np.asarray(rt_values, dtype=float)
+        rv = rv.astype(float)
+        rt_min = float(np.nanmin(rv))
+        rt_max = float(np.nanmax(rv))
+    except Exception:
+        rt_min, rt_max = 0.0, float(max(1.0, len(x) - 1))
 
     def hover(event):
-        if event.inaxes == axs:
-            inv = axs.transData.inverted()
+        nonlocal y_min, y_max
+        if event.inaxes == axs and np.isfinite([rt_min, rt_max]).all() and rt_max != rt_min:
             maxcoord = axs.transData.transform((x[0], 0))[0]
             mincoord = axs.transData.transform((x[-1], 0))[0]
-            rt_val = ((maxcoord - mincoord) - (event.x - mincoord)) / (maxcoord - mincoord) * (max_rt - min_rt) + min_rt
-            i = int(((maxcoord - mincoord) - (event.x - mincoord)) / (maxcoord - mincoord) * len(covar))
+            denom = (maxcoord - mincoord) if (maxcoord - mincoord) != 0 else 1.0
+            rt_val = ((maxcoord - mincoord) - (event.x - mincoord)) / denom * (rt_max - rt_min) + rt_min
+            i = int(((maxcoord - mincoord) - (event.x - mincoord)) / denom * len(covar))
             if 0 <= i < len(covar):
-                cov_val = covar[i]
-                cor_val = corr[i]
+                cov_val = float(y[i])
+                cor_val = float(corr[i]) if np.isfinite(corr[i]) else 0.0
                 text.set_visible(True)
                 text.set_position((event.xdata, event.ydata))
                 text.set_text(f'{rt_val:.2f} min, covariance: {cov_val:.6f}, correlation: {cor_val:.2f}')
@@ -166,15 +237,16 @@ def STOCSY(target, X, rt_values, mode="linear"):
 
     fig.canvas.mpl_connect("motion_notify_event", hover)
 
-    if not os.path.exists('images'):
-        os.mkdir('images')
-    plt.savefig(f"images/stocsy_from_{target}_{mode}.pdf", transparent=True, dpi=300)
+    # ----- export -----
+    os.makedirs('images', exist_ok=True)
+    plt.savefig(f"images/stocsy_from_{float(target)}_{mode}.pdf", transparent=True, dpi=300)
     html_str = mpld3.fig_to_html(fig)
-    with open(f"images/stocsy_interactive_{target}min_{mode}.html", "w") as f:
+    with open(f"images/stocsy_interactive_{float(target)}min_{mode}.html", "w") as f:
         f.write(html_str)
 
     plt.show()
     return corr, covar, fig
+
 
 # Função para exibir o scatter plot de MS STOCSY
 import plotly.express as px
