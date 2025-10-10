@@ -168,7 +168,6 @@ def STOCSY(target, X, rt_values, mode="linear", save_label=None):
 
     if not os.path.exists('images'):
         os.mkdir('images')
-    label = save_label if save_label is not None else f"{target}"
 	plt.savefig(f"images/stocsy_from_{target}_{mode}.pdf", transparent=True, dpi=300)
     html_str = mpld3.fig_to_html(fig)
     with open(f"images/stocsy_interactive_{target}min_{mode}.html", "w") as f:
