@@ -650,7 +650,7 @@ st.header("📁 Step 1: Upload Metadata")
 metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
 
 if metadata_file:
-    metadata_df = pd.read_csv(metadata_file)
+    metadata_df = pd.read_csv(metadata_file, sep=";")
     st.success("✅ Metadata loaded.")
     st.markdown("📋 Preview do Metadata CSV:")
     st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
