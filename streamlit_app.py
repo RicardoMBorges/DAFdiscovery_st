@@ -106,7 +106,7 @@ def STOCSY(target, X, rt_values, mode="linear"):
     if rv_raw.size != covar.size or not np.isfinite(rv_raw).any():
         # fallback to a synthetic axis (0..n-1)
         rv_raw = np.arange(covar.size, dtype=float)
-    # keep a clean, finite copy for ticks/hover
+    # clean copy for ticks/hover
     rv_clean = np.nan_to_num(rv_raw.astype(float), nan=0.0, posinf=0.0, neginf=0.0)
 
     # ----- build line collection -----
@@ -173,9 +173,7 @@ def STOCSY(target, X, rt_values, mode="linear"):
 
     # ----- ticks (robust) -----
     try:
-        rv = rt_values.values if isinstance(rt_values, pd.Series) else np.asarray(rt_values)
-        rv = rv.astype(float)
-        rv = rv[np.isfinite(rv)]
+        rv = rv_clean
         rmin = float(np.nanmin(rv))
         rmax = float(np.nanmax(rv))
         if rmin == rmax:
@@ -201,6 +199,7 @@ def STOCSY(target, X, rt_values, mode="linear"):
         # leave default ticks if mapping fails
         pass
 
+
     axs.set_xlabel('ppm', fontsize=14)
     axs.set_ylabel(f"Covariance with \n signal at {float(target):.2f} ppm", fontsize=14)
     axs.set_title(f'STOCSY from signal at {float(target):.2f} ppm ({mode} model)', fontsize=16)
@@ -215,8 +214,8 @@ def STOCSY(target, X, rt_values, mode="linear"):
     try:
         rv = rt_values.values if isinstance(rt_values, pd.Series) else np.asarray(rt_values, dtype=float)
         rv = rv.astype(float)
-        rt_min = float(np.nanmin(rv))
-        rt_max = float(np.nanmax(rv))
+        rt_min = float(np.nanmin(rv_clean))
+        rt_max = float(np.nanmax(rv_clean))
     except Exception:
         rt_min, rt_max = 0.0, float(max(1.0, len(x) - 1))
 
@@ -243,17 +242,18 @@ def STOCSY(target, X, rt_values, mode="linear"):
             lnx[0].set_linestyle('None')
             lny[0].set_linestyle('None')
         fig.canvas.draw_idle()
-
+		
     fig.canvas.mpl_connect("motion_notify_event", hover)
 
     # ----- export -----
     os.makedirs('images', exist_ok=True)
+    fig.tight_layout()
     plt.savefig(f"images/stocsy_from_{float(target)}_{mode}.pdf", transparent=True, dpi=300)
     html_str = mpld3.fig_to_html(fig)
     with open(f"images/stocsy_interactive_{float(target)}min_{mode}.html", "w") as f:
         f.write(html_str)
 
-    plt.show()
+    # Do NOT call plt.show() inside Streamlit
     return corr, covar, fig
 
 
