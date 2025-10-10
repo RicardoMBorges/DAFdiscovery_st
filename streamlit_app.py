@@ -496,8 +496,6 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     return corr, covar, MSinfo_corr, fig
 
 
-
-
 def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear", driver_value=None):
     """
     Run STOCSY depending on data availability.
@@ -647,14 +645,37 @@ st.markdown("""
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
-metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
+metadata_file = st.file_uploader(
+    "Upload your Metadata CSV (semicolon-separated):",
+    type=["csv", "txt", "tsv"]
+)
 
 if metadata_file:
-    metadata_df = pd.read_csv(metadata_file, sep=";")
-    st.success("✅ Metadata loaded.")
-    st.markdown("📋 Preview do Metadata CSV:")
-    st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
+    # 1) Force semicolon parsing (and keep robust fallbacks)
+    raw_txt = metadata_file.getvalue().decode("utf-8", errors="ignore")
 
+    # If your read_csv_safely is present, honor prefer=";"
+    try:
+        metadata_df = read_csv_safely(metadata_file, prefer=";")
+    except Exception:
+        # Fallback: force sep=";" with python engine (tolerant)
+        import io
+        metadata_df = pd.read_csv(io.StringIO(raw_txt), sep=";", engine="python", skipinitialspace=True)
+
+    # 2) If pandas still produced a single wide column, re-read with sep=";"
+    if metadata_df.shape[1] == 1 and ";" in metadata_df.columns[0]:
+        import io
+        metadata_df = pd.read_csv(io.StringIO(raw_txt), sep=";", engine="python", skipinitialspace=True)
+
+    # 3) Normalize headers and cells (trim, keep as str)
+    metadata_df.columns = metadata_df.columns.astype(str).str.strip()
+    for col in ["Samples", "NMR_filename", "MS_filename", "BioAct_filename"]:
+        if col in metadata_df.columns:
+            metadata_df[col] = metadata_df[col].astype(str).str.strip()
+
+    st.success("✅ Metadata loaded (semicolon-separated).")
+    st.caption(f"Detected columns: {', '.join(map(str, metadata_df.columns))}")
+    st.dataframe(metadata_df.head(), use_container_width=True)
 
     (
         ordered_samples,
@@ -666,6 +687,7 @@ if metadata_file:
     ) = analyze_metadata(metadata_df)
 
     st.markdown(f"**Detected Option**: {option} — Using: {', '.join(data_in_use)}")
+
 
     # --- Upload data files based on metadata ---
     st.header("📂 Step 2: Upload Required Data Files")
