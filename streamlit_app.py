@@ -1,3 +1,4 @@
+
 # ========== UNIFIED APP.PY (STOCSY + DAFDISCOVERY + STREAMLIT) ==========
 
 # === Original STOCSY(mode).py functions ===
@@ -16,7 +17,6 @@ from PIL import Image
 def STOCSY(target, X, rt_values, mode="linear"):
     """
     Structured STOCSY: Compute correlation and covariance between a target signal and a matrix of signals.
-    Robust version: handles NaN/Inf, safe axis limits, resilient tick logic.
     """
 
     import os
@@ -25,211 +25,133 @@ def STOCSY(target, X, rt_values, mode="linear"):
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.collections import LineCollection
+    from scipy import stats
     from scipy.optimize import curve_fit
     import pandas as pd
 
-    # ----- models -----
-    def exp_model(x, a, b, c):        return a * np.exp(-b * x) + c
-    def sin_model(x, a, b, c, d):     return a * np.sin(b * x + c) + d
-    def sigmoid_model(x, L, k, x0):   return L / (1 + np.exp(-k * (x - x0)))
-    def gauss_model(x, a, mu, s, c):  return a * np.exp(-(x - mu)**2 / (2 * s**2)) + c
+    def exp_model(x, a, b, c):
+        return a * np.exp(-b * x) + c
 
-    # ----- select target vector -----
-    if isinstance(target, (int, float, np.floating)):
-        # find row in axis closest to target
-        if isinstance(rt_values, pd.Series):
-            idx = (rt_values - float(target)).abs().idxmin()
-        else:
-            # rt_values can be array-like
-            rv = np.asarray(rt_values, dtype=float)
-            idx = int(np.nanargmin(np.abs(rv - float(target))))
+    def sin_model(x, a, b, c, d):
+        return a * np.sin(b * x + c) + d
+
+    def sigmoid_model(x, L, k, x0):
+        return L / (1 + np.exp(-k * (x - x0)))
+
+    def gauss_model(x, a, mu, sigma, c):
+        return a * np.exp(-(x - mu)**2 / (2 * sigma**2)) + c
+
+    if isinstance(target, float):
+        idx = np.abs(rt_values - target).idxmin()
         target_vect = X.iloc[idx]
     else:
         target_vect = target
 
-    # ensure arrays for fitting
-    x_t = target_vect.values.astype(float)
-
-    # ----- correlations row-by-row -----
     corr = []
     for i in range(X.shape[0]):
-        y_i = X.iloc[i].values.astype(float)
-        r = 0.0
+        x = target_vect.values
+        y = X.iloc[i].values
         try:
             if mode == "linear":
-                r = np.corrcoef(x_t, y_i)[0, 1]
+                r = np.corrcoef(x, y)[0, 1]
             elif mode == "exponential":
-                popt, _ = curve_fit(exp_model, x_t, y_i, maxfev=10000)
-                r = np.corrcoef(y_i, exp_model(x_t, *popt))[0, 1]
+                popt, _ = curve_fit(exp_model, x, y, maxfev=10000)
+                r = np.corrcoef(y, exp_model(x, *popt))[0, 1]
             elif mode == "sinusoidal":
                 guess_freq = 1 / (2 * np.pi)
-                popt, _ = curve_fit(sin_model, x_t, y_i, p0=[1, guess_freq, 0, 0], maxfev=10000)
-                r = np.corrcoef(y_i, sin_model(x_t, *popt))[0, 1]
+                popt, _ = curve_fit(sin_model, x, y, p0=[1, guess_freq, 0, 0], maxfev=10000)
+                r = np.corrcoef(y, sin_model(x, *popt))[0, 1]
             elif mode == "sigmoid":
-                # scale to [0,1] to stabilize
-                x_sc = (x_t - np.nanmin(x_t)) / (np.nanmax(x_t) - np.nanmin(x_t) + 1e-12)
-                y_sc = (y_i - np.nanmin(y_i)) / (np.nanmax(y_i) - np.nanmin(y_i) + 1e-12)
-                popt, _ = curve_fit(sigmoid_model, x_sc, y_sc, p0=[1, 1, 0.5], maxfev=10000)
-                r = np.corrcoef(y_sc, sigmoid_model(x_sc, *popt))[0, 1]
+                x_scaled = (x - np.min(x)) / (np.max(x) - np.min(x))
+                y_scaled = (y - np.min(y)) / (np.max(y) - np.min(y))
+                popt, _ = curve_fit(sigmoid_model, x_scaled, y_scaled, p0=[1, 1, 0.5], maxfev=10000)
+                r = np.corrcoef(y_scaled, sigmoid_model(x_scaled, *popt))[0, 1]
             elif mode == "gaussian":
-                mu_init = x_t[np.nanargmax(y_i)]
-                sigma_init = np.nanstd(x_t) + 1e-12
-                popt, _ = curve_fit(gauss_model, x_t, y_i, p0=[1, mu_init, sigma_init, 0], maxfev=10000)
-                r = np.corrcoef(y_i, gauss_model(x_t, *popt))[0, 1]
+                mu_init = x[np.argmax(y)]
+                sigma_init = np.std(x)
+                popt, _ = curve_fit(gauss_model, x, y, p0=[1, mu_init, sigma_init, 0], maxfev=10000)
+                r = np.corrcoef(y, gauss_model(x, *popt))[0, 1]
             else:
                 raise ValueError("Invalid mode")
         except Exception:
-            r = 0.0
-        # sanitize correlation
-        if not np.isfinite(r):
-            r = 0.0
+            r = 0
         corr.append(r)
 
-    corr = np.array(corr, dtype=float)
+    corr = np.array(corr)
+    covar = (target_vect - target_vect.mean()) @ (X.T - np.tile(X.T.mean(), (X.T.shape[0], 1))) / (X.T.shape[0] - 1)
 
-    # ----- covariance vs every row (population with n-1 denom) -----
-    Xt = X.to_numpy(dtype=float)
-    tv = target_vect.to_numpy(dtype=float)
-    tvc = tv - np.nanmean(tv)
-    Xc  = Xt - np.nanmean(Xt, axis=1, keepdims=True)
-    with np.errstate(invalid="ignore"):
-        covar = (tvc @ Xc.T) / max(1, Xt.shape[1] - 1)
-    covar = np.array(covar, dtype=float)
-    if not np.isfinite(covar).any():
-        covar = np.zeros_like(covar)
-
-    # 🔧 Ensure rt_values is usable and aligned
-    if isinstance(rt_values, pd.Series):
-        rv_raw = rt_values.values
-    else:
-        rv_raw = np.asarray(rt_values)
-    if rv_raw.size != covar.size or not np.isfinite(rv_raw).any():
-        # fallback to a synthetic axis (0..n-1)
-        rv_raw = np.arange(covar.size, dtype=float)
-    # clean copy for ticks/hover
-    rv_clean = np.nan_to_num(rv_raw.astype(float), nan=0.0, posinf=0.0, neginf=0.0)
-
-    # ----- build line collection -----
-    x = np.linspace(0, len(covar) - 1, len(covar))
-    y = covar.copy()
-    y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-
-    pts = np.array([x, y]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([pts[:-1], pts[1:]], axis=1)
+    x = np.linspace(0, len(covar), len(covar))
+    y = covar
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
     fig, axs = plt.subplots(1, 1, figsize=(16, 4), sharex=True, sharey=True)
-
-    cmin = float(np.nanmin(corr)) if np.isfinite(corr).any() else -1.0
-    cmax = float(np.nanmax(corr)) if np.isfinite(corr).any() else  1.0
-    if cmin == cmax:
-        cmin, cmax = cmin - 1e-6, cmax + 1e-6
-    norm = plt.Normalize(cmin, cmax)
-
+    norm = plt.Normalize(corr.min(), corr.max())
     lc = LineCollection(segments, cmap='jet', norm=norm)
     lc.set_array(corr)
     lc.set_linewidth(2)
     axs.add_collection(lc)
     fig.colorbar(lc, ax=axs)
 
-    # ----- robust axis limits -----
-    if np.isfinite(y).any():
-        y_global_min = float(np.nanmin(y))
-        y_global_max = float(np.nanmax(y))
-        if y_global_min == y_global_max:
-            y_global_min -= 1e-6
-            y_global_max += 1e-6
-    else:
-        y_global_min, y_global_max = -1.0, 1.0
-
-    x_min, x_max = float(np.nanmin(x)), float(np.nanmax(x))
-
-    # Default y-range used by hover lines too
-    y_min, y_max = y_global_min, y_global_max
-
-    # === Attempt NMR-region zoom (fallback to global if invalid) ===
+    # === ZOOM X e Y com base na região NMR ===
     if isinstance(rt_values, pd.Series):
-        n_total = len(rt_values)
-        # heuristic: first half as NMR window if we can't infer better
-        x_start = 0
-        x_end   = max(1, min(n_total, int(n_total * 0.5)))
+        nmr_len = int(len(rt_values) / X.shape[1]) if X.shape[1] > 1 else len(rt_values)
+        nmr_start = rt_values.iloc[0]
+        nmr_end = rt_values.iloc[nmr_len - 1]
+        x_start = int((nmr_start - rt_values.min()) / (rt_values.max() - rt_values.min()) * len(covar))
+        x_end = int((nmr_end - rt_values.min()) / (rt_values.max() - rt_values.min()) * len(covar))
+        if x_start > x_end:
+            x_start, x_end = x_end, x_start
         y_nmr_region = y[x_start:x_end]
-        if y_nmr_region.size > 0 and np.isfinite(y_nmr_region).any():
-            y_min = float(np.nanmin(y_nmr_region))
-            y_max = float(np.nanmax(y_nmr_region))
-            if y_min == y_max:
-                y_min -= 1e-6
-                y_max += 1e-6
-            # ppm axis decreasing
-            axs.set_xlim(float(x_end), float(x_start))
-            axs.set_ylim(y_min, y_max)
-        else:
-            axs.set_xlim(x_min, x_max)
-            axs.set_ylim(y_global_min, y_global_max)
-            y_min, y_max = y_global_min, y_global_max
+        y_min = np.min(y_nmr_region)
+        y_max = np.max(y_nmr_region)
+        axs.set_xlim(x_end, x_start)  # eixo ppm decrescente
+        axs.set_ylim(y_min, y_max)
     else:
-        axs.set_xlim(x_min, x_max)
-        axs.set_ylim(y_global_min, y_global_max)
-        y_min, y_max = y_global_min, y_global_max
+        axs.set_xlim(x.min(), x.max())
+        axs.set_ylim(y.min(), y.max())
 
-    # ----- ticks (robust) -----
-    try:
-        rv = rv_clean
-        rmin = float(np.nanmin(rv))
-        rmax = float(np.nanmax(rv))
-        if rmin == rmax:
-            raise ValueError
-
-        ticksx, tickslabels = [], []
-        if rmax < 30:
-            raw_ticks = np.linspace(math.ceil(rmin), int(rmax), max(1, int(rmax) - math.ceil(rmin) + 1))
-        else:
-            raw_ticks = np.linspace(
-                math.ceil(rmin / 10.0) * 10,
-                max(math.ceil(rmin / 10.0) * 10, math.ceil(rmax / 10.0) * 10 - 10),
-                max(1, math.ceil(rmax / 10.0) - math.ceil(rmin / 10.0))
-            )
-
-        for t in raw_ticks:
-            pos = int((t - rmin) / (rmax - rmin) * (len(x) - 1))
-            pos = max(0, min(pos, len(x) - 1))
-            ticksx.append(x[pos])
-            tickslabels.append(t)
-        plt.xticks(ticksx, tickslabels, fontsize=12)
-    except Exception:
-        # leave default ticks if mapping fails
-        pass
-
+    # Ticks do eixo X (ppm)
+    min_rt = rt_values.min()
+    max_rt = rt_values.max()
+    ticksx = []
+    tickslabels = []
+    if max_rt < 30:
+        ticks = np.linspace(math.ceil(min_rt), int(max_rt), int(max_rt) - math.ceil(min_rt) + 1)
+    else:
+        ticks = np.linspace(math.ceil(min_rt / 10.0) * 10,
+                             math.ceil(max_rt / 10.0) * 10 - 10,
+                             math.ceil(max_rt / 10.0) - math.ceil(min_rt / 10.0))
+    currenttick = 0
+    for rt_val in rt_values:
+        if currenttick < len(ticks) and rt_val > ticks[currenttick]:
+            position = int((rt_val - min_rt) / (max_rt - min_rt) * x.max())
+            if position < len(x):
+                ticksx.append(x[position])
+                tickslabels.append(ticks[currenttick])
+            currenttick += 1
+    plt.xticks(ticksx, tickslabels, fontsize=12)
 
     axs.set_xlabel('ppm', fontsize=14)
-    axs.set_ylabel(f"Covariance with \n signal at {float(target):.2f} ppm", fontsize=14)
-    axs.set_title(f'STOCSY from signal at {float(target):.2f} ppm ({mode} model)', fontsize=16)
+    axs.set_ylabel(f"Covariance with \n signal at {target:.2f} ppm", fontsize=14)
+    axs.set_title(f'STOCSY from signal at {target:.2f} ppm ({mode} model)', fontsize=16)
 
-    # ----- hover helpers -----
     text = axs.text(1, 1, '')
     lnx = plt.plot([60, 60], [0, 1.5], color='black', linewidth=0.3)
     lny = plt.plot([0, 100], [1.5, 1.5], color='black', linewidth=0.3)
-    lnx[0].set_linestyle('None'); lny[0].set_linestyle('None')
-
-    # Precompute for mapping event.x to rt value
-    try:
-        rv = rt_values.values if isinstance(rt_values, pd.Series) else np.asarray(rt_values, dtype=float)
-        rv = rv.astype(float)
-        rt_min = float(np.nanmin(rv_clean))
-        rt_max = float(np.nanmax(rv_clean))
-    except Exception:
-        rt_min, rt_max = 0.0, float(max(1.0, len(x) - 1))
+    lnx[0].set_linestyle('None')
+    lny[0].set_linestyle('None')
 
     def hover(event):
-        nonlocal y_min, y_max
-        if event.inaxes == axs and np.isfinite([rt_min, rt_max]).all() and rt_max != rt_min:
+        if event.inaxes == axs:
+            inv = axs.transData.inverted()
             maxcoord = axs.transData.transform((x[0], 0))[0]
             mincoord = axs.transData.transform((x[-1], 0))[0]
-            denom = (maxcoord - mincoord) if (maxcoord - mincoord) != 0 else 1.0
-            rt_val = ((maxcoord - mincoord) - (event.x - mincoord)) / denom * (rt_max - rt_min) + rt_min
-            i = int(((maxcoord - mincoord) - (event.x - mincoord)) / denom * len(covar))
+            rt_val = ((maxcoord - mincoord) - (event.x - mincoord)) / (maxcoord - mincoord) * (max_rt - min_rt) + min_rt
+            i = int(((maxcoord - mincoord) - (event.x - mincoord)) / (maxcoord - mincoord) * len(covar))
             if 0 <= i < len(covar):
-                cov_val = float(y[i])
-                cor_val = float(corr[i]) if np.isfinite(corr[i]) else 0.0
+                cov_val = covar[i]
+                cor_val = corr[i]
                 text.set_visible(True)
                 text.set_position((event.xdata, event.ydata))
                 text.set_text(f'{rt_val:.2f} min, covariance: {cov_val:.6f}, correlation: {cor_val:.2f}')
@@ -242,20 +164,18 @@ def STOCSY(target, X, rt_values, mode="linear"):
             lnx[0].set_linestyle('None')
             lny[0].set_linestyle('None')
         fig.canvas.draw_idle()
-		
+
     fig.canvas.mpl_connect("motion_notify_event", hover)
 
-    # ----- export -----
-    os.makedirs('images', exist_ok=True)
-    fig.tight_layout()
-    plt.savefig(f"images/stocsy_from_{float(target)}_{mode}.pdf", transparent=True, dpi=300)
+    if not os.path.exists('images'):
+        os.mkdir('images')
+    plt.savefig(f"images/stocsy_from_{target}_{mode}.pdf", transparent=True, dpi=300)
     html_str = mpld3.fig_to_html(fig)
-    with open(f"images/stocsy_interactive_{float(target)}min_{mode}.html", "w") as f:
+    with open(f"images/stocsy_interactive_{target}min_{mode}.html", "w") as f:
         f.write(html_str)
 
-    # Do NOT call plt.show() inside Streamlit
+    plt.show()
     return corr, covar, fig
-
 
 # Função para exibir o scatter plot de MS STOCSY
 import plotly.express as px
@@ -277,22 +197,30 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
         df_msplot = msinfo_corr.copy()
         df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
 
-        # match by tokens present after normalization
-        id_col   = [c for c in df_msplot.columns if "row" in c and "id" in c][0]
-        rt_col   = [c for c in df_msplot.columns if "retention" in c and "time" in c][0]
-        mz_col   = [c for c in df_msplot.columns if ("m/z" in c) or ("mz" in c)][0]
-        corr_tok = f"corr_{label.lower()}"
-        corr_col = [c for c in df_msplot.columns if c == corr_tok or c.startswith("corr_")][0]
+        id_col = [col for col in df_msplot.columns if "row ID" in col][0]
+        rt_col = [col for col in df_msplot.columns if "retention" in col][0]
+        mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
+        corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
 
         corr_plotMS = px.scatter(
-            df_msplot, x=rt_col, y=mz_col, color=corr_col,
-            size=np.abs(df_msplot[corr_col])**2, opacity=0.7,
+            df_msplot,
+            x=rt_col,
+            y=mz_col,
+            color=corr_col,
+            size=np.abs(df_msplot[corr_col])**2,
+            opacity=0.7,
             hover_data=[id_col, rt_col, mz_col, corr_col],
             color_continuous_scale=px.colors.sequential.Jet,
             title=f"Correlation Plot of MS Features (STOCSY – {label})"
         )
-        corr_plotMS.update_layout(font_color="black", title_font_color="black",
-                                  font=dict(size=16), height=500)
+
+        corr_plotMS.update_layout(
+            font_color="black",
+            title_font_color="black",
+            font=dict(size=16),
+            height=500
+        )
+
         st.plotly_chart(corr_plotMS, use_container_width=True)
 
         html_plot = corr_plotMS.to_html(full_html=False)
@@ -383,177 +311,11 @@ def analyze_metadata(metadata_df):
     print(f"✅ Data types detected: {data_in_use}")
     return ordered_samples, ordered_nmr_files, ordered_ms_files, ordered_bio_files, option, data_in_use
 
-import re
-from pathlib import Path
-
-# --- NEW: known MS/BioAct measurement suffixes (extend as needed) ---
-_MEAS_SUFFIXES = [
-    r"peak area",
-    r"area",
-    r"height",
-    r"intensity",
-    r"counts",
-    r"abundance",
-]
-_MEAS_SUFFIX_RE = re.compile(rf"\s+({'|'.join(_MEAS_SUFFIXES)})\s*$", re.IGNORECASE)
-
-def _strip_measure_suffix(s: str) -> str:
-    """Remove trailing measurement suffix like ' Peak area' from a header."""
-    return _MEAS_SUFFIX_RE.sub("", s)
-
-def _norm(s: str) -> str:
-    """Lenient normalization."""
-    if s is None:
-        return ""
-    s = str(s)
-    s = s.strip().replace("\u00A0", " ").replace("\t", " ")
-    s = re.sub(r"\s+", " ", s)
-    s = s.replace("\\", "/")
-    s = s.lower()
-    return s
-
-def _variants(key: str) -> list[str]:
-    """
-    Generate matching variants for filenames/labels:
-    - original, basename, stem
-    - with/without spaces/underscores
-    - with/without extension
-    - with/without measurement suffix (handled when indexing columns)
-    """
-    key0 = _norm(key)
-    # tolerate .mzML vs .mzml
-    key0 = key0.replace(".mzml", ".mzml")  # normalized already (lowercased)
-
-    stem = _norm(Path(key0).stem)
-    base = _norm(Path(key0).name)
-
-    # space/underscore toggles
-    def toggles(x: str):
-        return {
-            x,
-            x.replace(" ", ""),
-            x.replace(" ", "_"),
-            x.replace("_", " "),
-        }
-
-    cand = set()
-    for k in [key0, base, stem]:
-        cand |= toggles(k)
-
-    return list(cand)
-
-def _build_reverse_index(columns: list[str]) -> dict[str, str]:
-    """
-    Build reverse index: many normalized variants → canonical DF column.
-    Also index the version with any trailing measurement suffix stripped.
-    """
-    idx: dict[str, str] = {}
-    for col in columns:
-        col_norm = _norm(col)
-        col_norm_stripped = _strip_measure_suffix(col_norm)  # <-- key line
-        for v in set(_variants(col_norm) + _variants(col_norm_stripped)):
-            idx.setdefault(v, col)  # first seen wins
-    return idx
-
-def _resolve_column_order(df: pd.DataFrame,
-                          ordered_keys: list[str] | None,
-                          ordered_samples: list[str]) -> tuple[list[str], list[tuple[str,str]]]:
-    cols = list(df.columns)
-    rev_idx = _build_reverse_index(cols)
-
-    resolved_cols: list[str] = []
-    missing: list[tuple[str, str]] = []
-
-    if ordered_keys is not None:
-        if len(ordered_keys) != len(ordered_samples):
-            print(f"⚠️ Length mismatch: {len(ordered_keys)=} vs {len(ordered_samples)=}. Proceeding best-effort.")
-
-        for i, sample in enumerate(ordered_samples):
-            key = ordered_keys[i] if i < len(ordered_keys) else ordered_keys[-1]
-            found = None
-
-            # 1) try filename
-            for v in _variants(key):
-                if v in rev_idx:
-                    found = rev_idx[v]
-                    break
-
-            # 2) fallback: sample label
-            if not found:
-                for v in _variants(sample):
-                    if v in rev_idx:
-                        found = rev_idx[v]
-                        break
-
-            if found:
-                resolved_cols.append(found)
-            else:
-                missing.append((sample, key))
-    else:
-        # No keys → match by sample names
-        for sample in ordered_samples:
-            found = None
-            for v in _variants(sample):
-                if v in rev_idx:
-                    found = rev_idx[v]
-                    break
-            if found:
-                resolved_cols.append(found)
-            else:
-                missing.append((sample, sample))
-
-    # Preserve order / de-dup
-    seen = set()
-    deduped = []
-    for c in resolved_cols:
-        if c not in seen:
-            seen.add(c)
-            deduped.append(c)
-
-    return deduped, missing
-
-def _raise_or_log_missing(context: str,
-                          df: pd.DataFrame,
-                          missing: list[tuple[str,str]]) -> None:
-    if not missing:
-        return
-    avail = ", ".join(map(str, df.columns))
-    details = "\n".join([f"- sample '{s}' expected key '{k}'" for (s,k) in missing])
-    print(
-        f"❌ Could not resolve some columns for {context}.\n"
-        f"Missing ({len(missing)}):\n{details}\n\n"
-        f"Available columns:\n{avail}\n"
-        f"Tip: your table adds measurement suffixes like ' Peak area' — "
-        f"the matcher strips those automatically; check spelling/case of filenames."
-    )
 
 
 # ===============================
 # ⚙️ 2. DATA MERGING BY OPTION
 # ===============================
-
-from pathlib import Path
-
-def _make_unique_names(sample_list, key_list=None):
-    """
-    Make per-column display names unique.
-    If a sample repeats, append '__<file-stem>' (or '__2', '__3' fallback).
-    sample_list and key_list should be aligned to the resolved columns.
-    """
-    out, seen = [], {}
-    for i, base in enumerate(sample_list):
-        base = str(base)
-        stem = None
-        if key_list is not None and i < len(key_list) and key_list[i] is not None:
-            stem = Path(str(key_list[i])).stem
-        if base not in seen:
-            seen[base] = 1
-            out.append(base)
-        else:
-            seen[base] += 1
-            out.append(f"{base}__{stem or seen[base]}")
-    return out
-
 import os
 import numpy as np
 import pandas as pd
@@ -567,105 +329,101 @@ def prepare_data_by_option(option, Ordered_Samples,
     new_axis = None
     MSinfo = None
 
-    # ---------- NMR (when present) ----------
-    if option in (1, 2, 3, 5):
-        ppm = NMR.iloc[:, 0]  # first col is axis
-        nmr_block = NMR.iloc[:, 1:].copy()
-        nmr_cols, nmr_missing = _resolve_column_order(
-            nmr_block, Ordered_NMR_filename, Ordered_Samples
-        )
-        _raise_or_log_missing("NMR", NMR, nmr_missing)
-        NMR = pd.concat([ppm, nmr_block[nmr_cols]], axis=1)
-
-        # NMR rename (unique)
-        nmr_names = _make_unique_names(
-            sample_list=Ordered_Samples[:len(nmr_cols)],
-            key_list=(Ordered_NMR_filename[:len(nmr_cols)] if Ordered_NMR_filename else None)
-        )
-        NMR.columns = ["Unnamed: 0"] + nmr_names
-
-    # ---------- MS (when present) ----------
-    if option in (1, 2, 4):
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]].copy()
-        MSdata_raw = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        ms_cols, ms_missing = _resolve_column_order(
-            MSdata_raw, Ordered_MS_filename, Ordered_Samples
-        )
-        _raise_or_log_missing("MS", MS, ms_missing)
-        MSdata = MSdata_raw[ms_cols].copy()
-
-        # MS rename (unique)
-        ms_names = _make_unique_names(
-            sample_list=Ordered_Samples[:len(ms_cols)],
-            key_list=(Ordered_MS_filename[:len(ms_cols)] if Ordered_MS_filename else None)
-        )
-        MSdata.columns = ms_names
-
-    # ---------- BioAct (when present) ----------
-    if option in (1, 3, 4):
-        bio_block = BioAct.iloc[:, 1:].copy() if BioAct.shape[1] > 1 else BioAct.copy()
-        bio_cols, bio_missing = _resolve_column_order(
-            bio_block, Ordered_BioAct_filename, Ordered_Samples
-        )
-        _raise_or_log_missing("BioActivity", BioAct, bio_missing)
-        BioActdata = bio_block[bio_cols].copy()
-
-        # BioAct rename (unique)
-        bio_names = _make_unique_names(
-            sample_list=Ordered_Samples[:len(bio_cols)],
-            key_list=(Ordered_BioAct_filename[:len(bio_cols)] if Ordered_BioAct_filename else None)
-        )
-        BioActdata.columns = bio_names
-
-    # ---------- Build merged matrix & axis ----------
     if option == 1:  # NMR + MS + BioAct
-        MergeDF = pd.concat([NMR.drop(columns=["Unnamed: 0"]),
-                             MSdata / 1e8,
-                             BioActdata], ignore_index=True)
+        ppm = NMR["Unnamed: 0"]
+        NMR = NMR[Ordered_NMR_filename]
+        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
+
+        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
+        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        MSdata = MSdata[Ordered_MS_filename]
+        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
+
+        BioActdata = BioAct.iloc[:, 1:]
+        BioActdata = BioActdata[Ordered_BioAct_filename]
+        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
+
+        # BioAct always last
+        MergeDF = pd.concat([NMR, MSdata / 1e8, BioActdata], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
         start = ppm.values[-1] + gap
-        end = start + (len(MergeDF) - len(ppm)) * gap
+        end = start + ((len(MSdata) + len(BioActdata)) * gap)
         axis2 = np.arange(start, end, gap)
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
+
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
     elif option == 2:  # NMR + MS
-        MergeDF = pd.concat([NMR.drop(columns=["Unnamed: 0"]),
-                             MSdata / 1e8], ignore_index=True)
+        ppm = NMR["Unnamed: 0"]
+        NMR = NMR[Ordered_NMR_filename]
+        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
+
+        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
+        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        MSdata = MSdata[Ordered_MS_filename]
+        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
+
+        MergeDF = pd.concat([NMR, MSdata / 1e8], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
         start = ppm.values[-1] + gap
-        end = start + (len(MergeDF) - len(ppm)) * gap
+        end = start + len(MSdata) * gap
         axis2 = np.arange(start, end, gap)
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
+
         filename = "MergeDF_NMR_MS.csv"
 
     elif option == 3:  # NMR + BioAct
-        MergeDF = pd.concat([NMR.drop(columns=["Unnamed: 0"]),
-                             BioActdata / 20000], ignore_index=True)
+        ppm = NMR["Unnamed: 0"]
+        NMR = NMR[Ordered_NMR_filename]
+        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
+
+        BioActdata = BioAct.iloc[:, 1:]
+        BioActdata = BioActdata[Ordered_BioAct_filename]
+        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
+
+        MergeDF = pd.concat([NMR, BioActdata / 20000], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
         start = ppm.values[-1] + gap
-        end = start + (len(MergeDF) - len(ppm)) * gap
+        end = start + len(BioActdata) * gap
         axis2 = np.arange(start, end, gap)
         new_axis = pd.concat([ppm, pd.Series(axis2)], ignore_index=True)
+
         filename = "MergeDF_NMR_BioAct.csv"
 
     elif option == 4:  # MS + BioAct
+        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
+        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        MSdata = MSdata[Ordered_MS_filename]
+        MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
+
+        BioActdata = BioAct.iloc[:, 1:]
+        BioActdata = BioActdata[Ordered_BioAct_filename]
+        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
+
         MergeDF = pd.concat([MSdata, BioActdata], ignore_index=True)
-        new_axis = pd.Series(np.arange(0, len(MergeDF)))
+
+        new_axis = pd.Series(np.arange(0, len(MSdata) + len(BioActdata)))
+
         filename = "MergeDF_MS_BioAct.csv"
 
     elif option == 5:  # NMR only
-        MergeDF = NMR.drop(columns=["Unnamed: 0"])
+        ppm = NMR["Unnamed: 0"]
+        NMR = NMR[Ordered_NMR_filename]
+        NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
+
+        MergeDF = NMR
         new_axis = ppm
         filename = "MergeDF_NMR.csv"
 
     else:
         raise ValueError("❌ Invalid option. Option must be between 1 and 5.")
 
-    os.makedirs('data', exist_ok=True)
+    if not os.path.exists('data'):
+        os.makedirs('data')
+
     MergeDF.to_csv(f"data/{filename}", sep=",", index=False)
     print(f"✅ Data merged and saved to 'data/{filename}'")
     return MergeDF, new_axis, MSinfo
@@ -739,6 +497,8 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     return corr, covar, MSinfo_corr, fig
 
 
+
+
 def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear", driver_value=None):
     """
     Run STOCSY depending on data availability.
@@ -789,6 +549,8 @@ def auto_stocsy_driver_run(MergeDF, new_axis,  MSinfo, data_in_use, mode="linear
     )
 
     return corr, covar, MSinfo_corr, fig
+
+
 
 
 # =======================================
@@ -886,59 +648,14 @@ st.markdown("""
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
-metadata_file = st.file_uploader(
-    "Upload your Metadata CSV (semicolon-separated):",
-    type=["csv", "txt", "tsv"]
-)
+metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
 
 if metadata_file:
-    from io import StringIO as _SIO
+    metadata_df = pd.read_csv(metadata_file)
+    st.success("✅ Metadata loaded.")
+    st.markdown("📋 Preview do Metadata CSV:")
+    st.markdown(metadata_df.head().to_html(index=False), unsafe_allow_html=True)
 
-    raw_txt = metadata_file.getvalue().decode("utf-8", errors="ignore")
-
-    def _read_semicolon_csv(txt: str) -> pd.DataFrame:
-        base_kwargs = dict(sep=";", skipinitialspace=True)
-        # 1) Try fast/default engine
-        try:
-            return pd.read_csv(_SIO(txt), **base_kwargs)
-        except Exception:
-            pass
-        # 2) Try python engine + on_bad_lines (pandas ≥ 1.3)
-        try:
-            return pd.read_csv(_SIO(txt), engine="python", on_bad_lines="skip", **base_kwargs)
-        except TypeError:
-            # 3) Fallback for older pandas (<1.3): use deprecated flags
-            try:
-                return pd.read_csv(
-                    _SIO(txt), engine="python",
-                    error_bad_lines=False, warn_bad_lines=True,  # deprecated but still works on old versions
-                    **base_kwargs
-                )
-            except Exception as e:
-                raise e
-
-    try:
-        metadata_df = _read_semicolon_csv(raw_txt)
-    except Exception as e:
-        st.error(f"Failed to parse metadata as ';'-separated CSV.\n{e}")
-        st.stop()
-
-    # If somehow still one wide column, re-read once more (common when BOM/odd header)
-    if metadata_df.shape[1] == 1 and ";" in metadata_df.columns[0]:
-        try:
-            metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", skipinitialspace=True)
-        except Exception:
-            metadata_df = pd.read_csv(_SIO(raw_txt), sep=";", engine="python", skipinitialspace=True)
-
-    # Normalize headers/cells
-    metadata_df.columns = metadata_df.columns.astype(str).str.strip()
-    for col in ["Samples", "NMR_filename", "MS_filename", "BioAct_filename"]:
-        if col in metadata_df.columns:
-            metadata_df[col] = metadata_df[col].astype(str).str.strip()
-
-    st.success("✅ Metadata loaded (semicolon-separated).")
-    st.caption("Detected columns: " + ", ".join(map(str, metadata_df.columns)))
-    st.dataframe(metadata_df.head(), use_container_width=True)
 
     (
         ordered_samples,
@@ -950,7 +667,6 @@ if metadata_file:
     ) = analyze_metadata(metadata_df)
 
     st.markdown(f"**Detected Option**: {option} — Using: {', '.join(data_in_use)}")
-
 
     # --- Upload data files based on metadata ---
     st.header("📂 Step 2: Upload Required Data Files")
@@ -1159,4 +875,5 @@ Use this feature when you want to force the correlation analysis of a specific s
                 except Exception as e:
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
+
 
