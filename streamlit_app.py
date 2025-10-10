@@ -696,13 +696,20 @@ def read_csv_safely(uploaded_file, prefer: str | None = None) -> pd.DataFrame:
         buf.seek(0)
         return pd.read_csv(buf, engine="python")
 
-
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
-metadata_file = st.file_uploader("Upload your Metadata CSV file:", type=["csv", "txt", "tsv"])
+metadata_file = st.file_uploader(
+    "Upload your Metadata CSV file:",
+    type=["csv", "txt", "tsv"]
+)
+
+# Predeclare to avoid UnboundLocalError
+nmr_data: pd.DataFrame | None = None
+ms_data: pd.DataFrame | None = None
+bio_data: pd.DataFrame | None = None
 
 if metadata_file:
-    metadata_df = read_csv_safely(metadata_file)  # << use robust reader
+    metadata_df = read_csv_safely(metadata_file)  # << robust reader
     st.success("✅ Metadata loaded.")
     st.caption(f"Detected columns: {', '.join(map(str, metadata_df.columns))}")
     st.dataframe(metadata_df.head(), use_container_width=True)
@@ -721,38 +728,59 @@ if metadata_file:
     # --- Upload data files based on metadata ---
     st.header("📂 Step 2: Upload Required Data Files")
 
-    nmr_data = ms_data = bio_data = None
+    # NMR
+    if "NMR" in data_in_use:
+        nmr_data_file = st.file_uploader(
+            "Upload NMR data (CSV/TSV)",
+            type=["csv", "tsv", "txt"]
+        )
+        if nmr_data_file:
+            nmr_data = read_csv_safely(nmr_data_file)
+            # First column as axis (ppm)
+            ppm = nmr_data.iloc[:, 0]
+            st.markdown("**📁 NMR column headers:** " + ", ".join(map(str, nmr_data.columns)))
 
-if "NMR" in data_in_use:
-    nmr_data_file = st.file_uploader("Upload NMR data (CSV/TSV)", type=["csv", "tsv", "txt"])
-    if nmr_data_file:
-        nmr_data = read_csv_safely(nmr_data_file)
+            fig = go.Figure()
+            for col in nmr_data.columns[1:]:
+                fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=str(col), opacity=0.5))
+            fig.update_layout(
+                title="NMR Raw Spectra",
+                xaxis_title="ppm",
+                yaxis_title="Intensity",
+                xaxis=dict(autorange='reversed'),
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-		ppm = nmr_data[nmr_data.columns[0]]
-        st.markdown("**📁 NMR column headers:** " + ", ".join(nmr_data.columns))
-        fig = go.Figure()
-        for col in nmr_data.columns[1:]:
-            fig.add_trace(go.Scatter(x=ppm, y=nmr_data[col], mode='lines', name=col, opacity=0.5))
-        fig.update_layout(title="NMR Raw Spectra", xaxis_title="ppm", yaxis_title="Intensity",
-                          xaxis=dict(autorange='reversed'), height=400)
-        st.plotly_chart(fig, use_container_width=True)
+            html_nmr = pio.to_html(fig, full_html=False)
+            st.download_button(
+                "⬇️ Download NMR Plot (HTML)",
+                data=html_nmr,
+                file_name="nmr_plot.html",
+                mime="text/html"
+            )
 
-        html_nmr = pio.to_html(fig, full_html=False)
-        st.download_button("⬇️ Download NMR Plot (HTML)", data=html_nmr,
-                           file_name="nmr_plot.html", mime="text/html")
+    # MS
+    if "MS" in data_in_use:
+        ms_data_file = st.file_uploader(
+            "Upload MS data (CSV/TSV)",
+            type=["csv", "tsv", "txt"]
+        )
+        if ms_data_file:
+            ms_data = read_csv_safely(ms_data_file)
+            st.markdown("**📁 MS column headers:** " + ", ".join(map(str, ms_data.columns)))
 
-	if "MS" in data_in_use:
-	    ms_data_file = st.file_uploader("Upload MS data (CSV/TSV)", type=["csv", "tsv", "txt"])
-	    if ms_data_file:
-	        ms_data = read_csv_safely(ms_data_file)
-            st.markdown("**📁 MS column headers:** " + ", ".join(ms_data.columns))
+    # BioActivity
+    if "BioAct" in data_in_use:
+        bio_data_file = st.file_uploader(
+            "Upload BioActivity (CSV/TSV)",
+            type=["csv", "tsv", "txt"]
+        )
+        if bio_data_file:
+            # If you *know* it’s semicolon-separated, use: read_csv_safely(bio_data_file, prefer=";")
+            bio_data = read_csv_safely(bio_data_file)
+            st.markdown("**📁 BioActivity column headers:** " + ", ".join(map(str, bio_data.columns)))
 
-	if "BioAct" in data_in_use:
-	    bio_data_file = st.file_uploader("Upload BioActivity (CSV/TSV)", type=["csv", "tsv", "txt"])
-	    if bio_data_file:
-	        # if you *know* your BioAct is semicolon-separated, pass prefer=";"
-	        bio_data = read_csv_safely(bio_data_file)   # or read_csv_safely(bio_data_file, prefer=";")
-	        st.markdown("**📁 BioActivity column headers:** " + ", ".join(map(str, bio_data.columns)))
 
     # --- Merge and STOCSY ---
     if st.button("▶️ Run Merge and STOCSY"):
