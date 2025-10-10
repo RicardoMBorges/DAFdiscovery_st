@@ -409,6 +409,41 @@ import os
 import numpy as np
 import pandas as pd
 
+def _trim_headers(df: pd.DataFrame) -> pd.DataFrame:
+    # standardize headers (string + strip)
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+def select_by_metadata(df: pd.DataFrame, desired_cols: list[str]) -> pd.DataFrame:
+    """
+    Return df subset with columns in desired_cols.
+    If they are not found at top-level, attempt using df.iloc[:,1:].
+    Raises a clear error if still not found.
+    """
+    df = _trim_headers(df)
+    desired = [str(c).strip() for c in desired_cols]
+
+    # Case A: columns exist as-is
+    if set(desired).issubset(df.columns):
+        return df[desired].copy()
+
+    # Case B: columns exist after dropping the first column
+    if df.shape[1] > 1:
+        df1 = df.iloc[:, 1:].copy()
+        df1.columns = [str(c).strip() for c in df1.columns]
+        if set(desired).issubset(df1.columns):
+            return df1[desired].copy()
+
+    # Nothing matched → build a helpful message
+    raise KeyError(
+        "None (or not all) of the expected columns were found in the BioActivity table.\n"
+        f"Expected: {desired}\n"
+        f"Available top-level: {list(df.columns)}\n"
+        f"Available after dropping first column: {list(df.iloc[:,1:].columns) if df.shape[1] > 1 else 'n/a'}"
+    )
+
+
 def prepare_data_by_option(option, Ordered_Samples,
                            NMR=None, Ordered_NMR_filename=None,
                            MS=None, Ordered_MS_filename=None,
@@ -428,9 +463,12 @@ def prepare_data_by_option(option, Ordered_Samples,
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
-        BioActdata = BioAct.iloc[:, 1:]
-        BioActdata = BioActdata[Ordered_BioAct_filename]
-        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
+		BioActdata = select_by_metadata(BioAct, Ordered_BioAct_filename)
+		BioActdata.rename(
+		    columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples[:len(Ordered_BioAct_filename)])),
+		    inplace=True
+		)
+
 
         # BioAct always last
         MergeDF = pd.concat([NMR, MSdata / 1e8, BioActdata], ignore_index=True)
