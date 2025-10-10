@@ -463,11 +463,11 @@ def prepare_data_by_option(option, Ordered_Samples,
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
-		BioActdata = select_by_metadata(BioAct, Ordered_BioAct_filename)
-		BioActdata.rename(
-		    columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples[:len(Ordered_BioAct_filename)])),
-		    inplace=True
-		)
+        BioActdata = select_by_metadata(BioAct, Ordered_BioAct_filename)
+        BioActdata.rename(
+            columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples[:len(Ordered_BioAct_filename)])),
+            inplace=True
+        )
 
 
         # BioAct always last
