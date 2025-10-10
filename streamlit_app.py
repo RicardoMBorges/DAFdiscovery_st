@@ -88,17 +88,26 @@ def STOCSY(target, X, rt_values, mode="linear"):
     corr = np.array(corr, dtype=float)
 
     # ----- covariance vs every row (population with n-1 denom) -----
-    # (X: rows = variables, cols = samples)
     Xt = X.to_numpy(dtype=float)
     tv = target_vect.to_numpy(dtype=float)
     tvc = tv - np.nanmean(tv)
     Xc  = Xt - np.nanmean(Xt, axis=1, keepdims=True)
-    # dot over samples (columns)
     with np.errstate(invalid="ignore"):
         covar = (tvc @ Xc.T) / max(1, Xt.shape[1] - 1)
     covar = np.array(covar, dtype=float)
     if not np.isfinite(covar).any():
         covar = np.zeros_like(covar)
+
+    # 🔧 Ensure rt_values is usable and aligned
+    if isinstance(rt_values, pd.Series):
+        rv_raw = rt_values.values
+    else:
+        rv_raw = np.asarray(rt_values)
+    if rv_raw.size != covar.size or not np.isfinite(rv_raw).any():
+        # fallback to a synthetic axis (0..n-1)
+        rv_raw = np.arange(covar.size, dtype=float)
+    # keep a clean, finite copy for ticks/hover
+    rv_clean = np.nan_to_num(rv_raw.astype(float), nan=0.0, posinf=0.0, neginf=0.0)
 
     # ----- build line collection -----
     x = np.linspace(0, len(covar) - 1, len(covar))
