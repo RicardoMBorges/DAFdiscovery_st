@@ -310,6 +310,149 @@ def analyze_metadata(metadata_df):
     print(f"✅ Data types detected: {data_in_use}")
     return ordered_samples, ordered_nmr_files, ordered_ms_files, ordered_bio_files, option, data_in_use
 
+import re
+from pathlib import Path
+
+# --- NEW: known MS/BioAct measurement suffixes (extend as needed) ---
+_MEAS_SUFFIXES = [
+    r"peak area",
+    r"area",
+    r"height",
+    r"intensity",
+    r"counts",
+    r"abundance",
+]
+_MEAS_SUFFIX_RE = re.compile(rf"\s+({'|'.join(_MEAS_SUFFIXES)})\s*$", re.IGNORECASE)
+
+def _strip_measure_suffix(s: str) -> str:
+    """Remove trailing measurement suffix like ' Peak area' from a header."""
+    return _MEAS_SUFFIX_RE.sub("", s)
+
+def _norm(s: str) -> str:
+    """Lenient normalization."""
+    if s is None:
+        return ""
+    s = str(s)
+    s = s.strip().replace("\u00A0", " ").replace("\t", " ")
+    s = re.sub(r"\s+", " ", s)
+    s = s.replace("\\", "/")
+    s = s.lower()
+    return s
+
+def _variants(key: str) -> list[str]:
+    """
+    Generate matching variants for filenames/labels:
+    - original, basename, stem
+    - with/without spaces/underscores
+    - with/without extension
+    - with/without measurement suffix (handled when indexing columns)
+    """
+    key0 = _norm(key)
+    # tolerate .mzML vs .mzml
+    key0 = key0.replace(".mzml", ".mzml")  # normalized already (lowercased)
+
+    stem = _norm(Path(key0).stem)
+    base = _norm(Path(key0).name)
+
+    # space/underscore toggles
+    def toggles(x: str):
+        return {
+            x,
+            x.replace(" ", ""),
+            x.replace(" ", "_"),
+            x.replace("_", " "),
+        }
+
+    cand = set()
+    for k in [key0, base, stem]:
+        cand |= toggles(k)
+
+    return list(cand)
+
+def _build_reverse_index(columns: list[str]) -> dict[str, str]:
+    """
+    Build reverse index: many normalized variants → canonical DF column.
+    Also index the version with any trailing measurement suffix stripped.
+    """
+    idx: dict[str, str] = {}
+    for col in columns:
+        col_norm = _norm(col)
+        col_norm_stripped = _strip_measure_suffix(col_norm)  # <-- key line
+        for v in set(_variants(col_norm) + _variants(col_norm_stripped)):
+            idx.setdefault(v, col)  # first seen wins
+    return idx
+
+def _resolve_column_order(df: pd.DataFrame,
+                          ordered_keys: list[str] | None,
+                          ordered_samples: list[str]) -> tuple[list[str], list[tuple[str,str]]]:
+    cols = list(df.columns)
+    rev_idx = _build_reverse_index(cols)
+
+    resolved_cols: list[str] = []
+    missing: list[tuple[str, str]] = []
+
+    if ordered_keys is not None:
+        if len(ordered_keys) != len(ordered_samples):
+            print(f"⚠️ Length mismatch: {len(ordered_keys)=} vs {len(ordered_samples)=}. Proceeding best-effort.")
+
+        for i, sample in enumerate(ordered_samples):
+            key = ordered_keys[i] if i < len(ordered_keys) else ordered_keys[-1]
+            found = None
+
+            # 1) try filename
+            for v in _variants(key):
+                if v in rev_idx:
+                    found = rev_idx[v]
+                    break
+
+            # 2) fallback: sample label
+            if not found:
+                for v in _variants(sample):
+                    if v in rev_idx:
+                        found = rev_idx[v]
+                        break
+
+            if found:
+                resolved_cols.append(found)
+            else:
+                missing.append((sample, key))
+    else:
+        # No keys → match by sample names
+        for sample in ordered_samples:
+            found = None
+            for v in _variants(sample):
+                if v in rev_idx:
+                    found = rev_idx[v]
+                    break
+            if found:
+                resolved_cols.append(found)
+            else:
+                missing.append((sample, sample))
+
+    # Preserve order / de-dup
+    seen = set()
+    deduped = []
+    for c in resolved_cols:
+        if c not in seen:
+            seen.add(c)
+            deduped.append(c)
+
+    return deduped, missing
+
+def _raise_or_log_missing(context: str,
+                          df: pd.DataFrame,
+                          missing: list[tuple[str,str]]) -> None:
+    if not missing:
+        return
+    avail = ", ".join(map(str, df.columns))
+    details = "\n".join([f"- sample '{s}' expected key '{k}'" for (s,k) in missing])
+    print(
+        f"❌ Could not resolve some columns for {context}.\n"
+        f"Missing ({len(missing)}):\n{details}\n\n"
+        f"Available columns:\n{avail}\n"
+        f"Tip: your table adds measurement suffixes like ' Peak area' — "
+        f"the matcher strips those automatically; check spelling/case of filenames."
+    )
 
 
 # ===============================
