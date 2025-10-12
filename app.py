@@ -319,6 +319,34 @@ import os
 import numpy as np
 import pandas as pd
 
+def _merge_with_msinfo(MergeDF_numeric: pd.DataFrame,
+                       n_nmr_rows: int,
+                       n_ms_rows: int,
+                       n_bio_rows: int,
+                       MSinfo: pd.DataFrame | None) -> pd.DataFrame:
+    """
+    Return a copy of MergeDF with the 3 MS info columns inserted on the MS rows.
+    Non-MS rows get NaN in those 3 columns.
+    """
+    if MSinfo is None or not isinstance(MSinfo, pd.DataFrame) or MSinfo.empty:
+        # nothing to add
+        return MergeDF_numeric.copy()
+
+    total_rows = n_nmr_rows + n_ms_rows + n_bio_rows
+    block = pd.DataFrame({
+        "row ID": [np.nan]*total_rows,
+        "row m/z": [np.nan]*total_rows,
+        "row retention time": [np.nan]*total_rows,
+    })
+
+    ms_start = n_nmr_rows
+    ms_end   = n_nmr_rows + n_ms_rows
+    block.iloc[ms_start:ms_end, :] = MSinfo.reset_index(drop=True).values
+
+    # prepend the info columns
+    return pd.concat([block, MergeDF_numeric.reset_index(drop=True)], axis=1)
+
+
 def prepare_data_by_option(option, Ordered_Samples,
                            NMR=None, Ordered_NMR_filename=None,
                            MS=None, Ordered_MS_filename=None,
@@ -874,4 +902,5 @@ Use this feature when you want to force the correlation analysis of a specific s
                 except Exception as e:
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
+
 
