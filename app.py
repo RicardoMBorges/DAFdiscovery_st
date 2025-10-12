@@ -352,25 +352,80 @@ def prepare_data_by_option(option, Ordered_Samples,
                            MS=None, Ordered_MS_filename=None,
                            BioAct=None, Ordered_BioAct_filename=None):
 
+    import os
+    import numpy as np
+    import pandas as pd
+
+    # --- helpers --------------------------------------------------------------
+    def _col_lookup(df, patterns, must_exist=True):
+        """
+        Find a single column in df whose normalized name matches any of 'patterns'.
+        Normalization: lower, strip, collapse spaces, replace '-' with ' '.
+        """
+        def norm(s):
+            return str(s).lower().strip().replace("-", " ").replace("_", " ")
+        cols_norm = {norm(c): c for c in df.columns}
+        for p in patterns:
+            p_norm = norm(p)
+            # exact
+            if p_norm in cols_norm:
+                return cols_norm[p_norm]
+            # contains
+            for k, orig in cols_norm.items():
+                if p_norm in k:
+                    return orig
+        if must_exist:
+            raise KeyError(f"Could not find any of columns matching {patterns} in: {list(df.columns)}")
+        return None
+
+    def _extract_ms_info(ms_df):
+        """
+        Robustly extract MS metadata columns and standardize names:
+        ['row ID','row m/z','row retention time'].
+        Fallback: take the first three columns if named variants are not found.
+        """
+        if ms_df is None or ms_df.empty:
+            return None, None, None
+
+        # Try robust matching
+        try:
+            col_id = _col_lookup(ms_df, ["row id", "feature id", "id"])
+            col_mz = _col_lookup(ms_df, ["row m/z", "mz", "m z"])
+            col_rt = _col_lookup(ms_df, ["row retention time", "retention time", "rt"])
+            msinfo = ms_df[[col_id, col_mz, col_rt]].copy()
+        except Exception:
+            # Fallback: first 3 columns as given
+            msinfo = ms_df.iloc[:, :3].copy()
+
+        # Standardize column names
+        msinfo.columns = ["row ID", "row m/z", "row retention time"]
+        return msinfo, "row ID", "row m/z"
+
+    # -------------------------------------------------------------------------
+
     ppm = None
     new_axis = None
     MSinfo = None
 
-    if option == 1:  # NMR + MS + BioAct
+    # ===== Option 1: NMR + MS + BioAct ======================================
+    if option == 1:
+        # NMR
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        # MS (keep metadata!)
+        MSinfo, _id_col, _mz_col = _extract_ms_info(MS)
+        MSdata = MS.drop(MS.columns[:3], axis=1)  # drop the first 3 (metadata) columns
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
+        # BioAct
         BioActdata = BioAct.iloc[:, 1:]
         BioActdata = BioActdata[Ordered_BioAct_filename]
         BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
 
-        # BioAct always last
+        # Merge (BioAct last)
         MergeDF = pd.concat([NMR, MSdata / 1e8, BioActdata], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
@@ -381,16 +436,20 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
-    elif option == 2:  # NMR + MS
+    # ===== Option 2: NMR + MS ===============================================
+    elif option == 2:
+        # NMR
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        # MS (keep metadata!)
+        MSinfo, _id_col, _mz_col = _extract_ms_info(MS)
+        MSdata = MS.drop(MS.columns[:3], axis=1)
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
+        # Merge
         MergeDF = pd.concat([NMR, MSdata / 1e8], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
@@ -401,7 +460,8 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_MS.csv"
 
-    elif option == 3:  # NMR + BioAct
+    # ===== Option 3: NMR + BioAct ===========================================
+    elif option == 3:
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
@@ -420,23 +480,27 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_BioAct.csv"
 
-    elif option == 4:  # MS + BioAct
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+    # ===== Option 4: MS + BioAct ============================================
+    elif option == 4:
+        # MS (keep metadata!)
+        MSinfo, _id_col, _mz_col = _extract_ms_info(MS)
+        MSdata = MS.drop(MS.columns[:3], axis=1)
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
+        # BioAct
         BioActdata = BioAct.iloc[:, 1:]
         BioActdata = BioActdata[Ordered_BioAct_filename]
         BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
 
         MergeDF = pd.concat([MSdata, BioActdata], ignore_index=True)
 
+        # Construct a simple synthetic axis (index-like) for MS+BioAct
         new_axis = pd.Series(np.arange(0, len(MSdata) + len(BioActdata)))
-
         filename = "MergeDF_MS_BioAct.csv"
 
-    elif option == 5:  # NMR only
+    # ===== Option 5: NMR only ===============================================
+    elif option == 5:
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
@@ -448,12 +512,21 @@ def prepare_data_by_option(option, Ordered_Samples,
     else:
         raise ValueError("❌ Invalid option. Option must be between 1 and 5.")
 
+    # ===== Tail (common epilogue) ============================================
     if not os.path.exists('data'):
         os.makedirs('data')
 
+    # Always persist MSinfo if present
+    if MSinfo is not None and isinstance(MSinfo, pd.DataFrame) and not MSinfo.empty:
+        MSinfo.to_csv("data/MSinfo_extracted.csv", index=False)
+
     MergeDF.to_csv(f"data/{filename}", sep=",", index=False)
     print(f"✅ Data merged and saved to 'data/{filename}'")
+    if MSinfo is not None:
+        print("✅ MSinfo (first 3 MS columns) saved to 'data/MSinfo_extracted.csv'")
+
     return MergeDF, new_axis, MSinfo
+
 
 
 # =======================================
@@ -902,5 +975,6 @@ Use this feature when you want to force the correlation analysis of a specific s
                 except Exception as e:
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
+
 
 
