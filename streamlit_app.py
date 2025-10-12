@@ -256,7 +256,7 @@ def show_stocsy_ms_correlation_plot(msinfo_corr: pd.DataFrame, label: str = "Bio
     # Resolve columns robustly
     id_col = _first_match(
         norm2orig,
-        ["row id", "feature id", "id", "row_index", "rowid", "feature_id"]
+        ["row ID", "row id", "feature id", "id", "row_index", "rowid", "feature_id"]
     )
     rt_col = _first_match(
         norm2orig,
