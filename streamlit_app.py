@@ -1,4 +1,3 @@
-
 # ========== UNIFIED APP.PY (STOCSY + DAFDISCOVERY + STREAMLIT) ==========
 
 # === Original STOCSY(mode).py functions ===
@@ -14,38 +13,7 @@ from scipy import stats
 from scipy.optimize import curve_fit
 from PIL import Image
 
-def read_table_any(uploaded_file):
-    """
-    Robustly read CSV/TSV files with unknown separators (comma/semicolon/tab).
-    Tries pandas engine auto-detection first; falls back to explicit seps.
-    """
-    import io
-    import pandas as pd
-
-    # 1) Try pandas' built-in detector
-    try:
-        return pd.read_csv(uploaded_file, sep=None, engine="python", skipinitialspace=True)
-    except Exception:
-        pass
-
-    # 2) Fallbacks
-    uploaded_file.seek(0)
-    try:
-        return pd.read_csv(uploaded_file, sep=";", engine="python", skipinitialspace=True)
-    except Exception:
-        pass
-
-    uploaded_file.seek(0)
-    try:
-        return pd.read_csv(uploaded_file, sep="\t", engine="python", skipinitialspace=True)
-    except Exception:
-        pass
-
-    uploaded_file.seek(0)
-    return pd.read_csv(uploaded_file, sep=",", engine="python", skipinitialspace=True)
-
-
-def STOCSY(target, X, rt_values, mode="linear"):
+def STOCSY(target, X, rt_values, mode="linear", axis_label="ppm"):
     """
     Structured STOCSY: Compute correlation and covariance between a target signal and a matrix of signals.
     """
@@ -163,9 +131,9 @@ def STOCSY(target, X, rt_values, mode="linear"):
             currenttick += 1
     plt.xticks(ticksx, tickslabels, fontsize=12)
 
-    axs.set_xlabel('ppm', fontsize=14)
-    axs.set_ylabel(f"Covariance with \n signal at {target:.2f} ppm", fontsize=14)
-    axs.set_title(f'STOCSY from signal at {target:.2f} ppm ({mode} model)', fontsize=16)
+    axs.set_xlabel(axis_label, fontsize=14)  # was 'ppm'
+    axs.set_ylabel(f"Covariance with \n signal at {target:.2f} {axis_label}", fontsize=14)
+    axs.set_title(f'STOCSY from signal at {target:.2f} {axis_label} ({mode} model)', fontsize=16)
 
     text = axs.text(1, 1, '')
     lnx = plt.plot([60, 60], [0, 1.5], color='black', linewidth=0.3)
@@ -210,116 +178,171 @@ def STOCSY(target, X, rt_values, mode="linear"):
 
 # Função para exibir o scatter plot de MS STOCSY
 import plotly.express as px
+import streamlit as st
 
-def show_stocsy_ms_correlation_plot(msinfo_corr: pd.DataFrame, label: str = "BioAct"):
+def show_stocsy_ms_correlation_plot(msinfo_corr, label=None, split_pos_neg=False):
     """
-    Display an interactive Plotly scatter plot for MS STOCSY correlation results.
-
-    This version is robust to column name variants (case/spacing/slashes).
-    Expected columns (any reasonable variant is accepted):
-      - ID:                ["row id", "feature id", "id"]
-      - Retention time:    ["row retention time", "retention time", "rt", "rt(min)", "rt_min"]
-      - m/z:               ["row m/z", "row mz", "m/z", "mz", "precursor m/z", "precursor_mz"]
-      - correlation:       any column starting with "corr_" (prefer "corr_{label}")
+    Robust MS STOCSY scatter plot (RT × m/z) with a threshold slider.
+    - Filters by |corr| >= threshold selected by the user.
+    - If split_pos_neg=True: two traces (pos/neg) with different outlines.
     """
+    import numpy as np
+    import pandas as pd
     import plotly.express as px
-
-    def _norm(s: str) -> str:
-        return (
-            str(s)
-            .strip()
-            .lower()
-            .replace(" ", "_")
-            .replace("-", "_")
-            .replace("/", "_")
-            .replace("__", "_")
-        )
-
-    def _first_match(norm2orig: dict, candidates: list[str]) -> str:
-        for cand in candidates:
-            key = _norm(cand)
-            if key in norm2orig:
-                return norm2orig[key]
-        # try partial contains (fallback)
-        for key, orig in norm2orig.items():
-            for cand in candidates:
-                if _norm(cand) in key:
-                    return orig
-        raise KeyError(f"Could not find any of: {candidates}\nAvailable: {list(norm2orig.values())}")
-
-    # Work on a copy; keep the ORIGINAL column names for plotting/hover
-    df = msinfo_corr.copy()
-
-    # Build normalized lookup map
-    norm2orig = {_norm(c): c for c in df.columns}
-
-    # Resolve columns robustly
-    id_col = _first_match(
-        norm2orig,
-        ["row ID", "row id", "feature id", "id", "row_index", "rowid", "feature_id"]
-    )
-    rt_col = _first_match(
-        norm2orig,
-        ["row retention time", "retention time", "rt", "rt(min)", "rt_min", "row_rt"]
-    )
-    mz_col = _first_match(
-        norm2orig,
-        ["row m/z", "row mz", "m/z", "mz", "precursor m/z", "precursor_mz", "precursor_mz"]
-    )
-
-    # Correlation column: prefer exact "corr_{label}" (case-insensitive), otherwise first starting with "corr_"
-    corr_candidates = [c for c in df.columns if _norm(c) == _norm(f"corr_{label}")]
-    if not corr_candidates:
-        corr_candidates = [c for c in df.columns if _norm(c).startswith("corr_")]
-    if not corr_candidates:
-        raise KeyError(
-            f"Could not find a correlation column (e.g., 'corr_{label}' or any 'corr_*'). "
-            f"Available columns: {list(df.columns)}"
-        )
-    corr_col = corr_candidates[0]
-
-    # Size scale (square the absolute correlation for a nicer dynamic range)
-    try:
-        size_series = (df[corr_col].abs() ** 2).clip(lower=0)
-    except Exception:
-        # if something weird is in the column, coerce and retry
-        size_series = pd.to_numeric(df[corr_col], errors="coerce").abs() ** 2
+    import plotly.graph_objects as go
+    import streamlit as st
+    import re
 
     st.subheader("💥 Correlation Plot of MS Features")
-    corr_plotMS = px.scatter(
-        df,
-        x=rt_col,
-        y=mz_col,
-        color=corr_col,
-        size=size_series,
-        opacity=0.7,
-        hover_data=[id_col, rt_col, mz_col, corr_col],
-        color_continuous_scale=px.colors.sequential.Jet,
-        title=f"Correlation Plot of MS Features (STOCSY – {label})"
-    )
 
-    corr_plotMS.update_layout(
-        font_color="black",
-        title_font_color="black",
-        font=dict(size=16),
-        height=500,
-        xaxis_title="Retention time",
-        yaxis_title="m/z"
-    )
+    if not isinstance(msinfo_corr, pd.DataFrame) or msinfo_corr.empty:
+        st.warning("No MSinfo/correlation data to plot.")
+        return
 
-    st.plotly_chart(corr_plotMS, use_container_width=True)
+    df = msinfo_corr.copy()
 
-    html_plot = corr_plotMS.to_html(full_html=False)
+    # ---------- normalize/resolve columns ----------
+    def norm(s: str) -> str:
+        s = str(s).lower().replace("_", " ")
+        s = re.sub(r"[^\w]+", " ", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    name_map = {c: norm(c) for c in df.columns}
+
+    def pick_col(predicate, blacklist=None):
+        for orig, nm in name_map.items():
+            if blacklist and any(b in nm for b in blacklist):
+                continue
+            if predicate(nm):
+                return orig
+        return None
+
+    id_col = pick_col(lambda nm: ("row" in nm and "id" in nm) or nm == "id")
+    mz_col = pick_col(lambda nm: ("mz" in nm or "m z" in nm), blacklist=["corr", "covar"])
+    rt_col = pick_col(lambda nm: ("retention" in nm and "time" in nm) or nm == "rt" or nm.startswith("rt "),
+                      blacklist=["corr", "covar"])
+
+    # correlation column (tolerant to suffix)
+    corr_col = None
+    corr_candidates = [c for c in df.columns if name_map[c].startswith("corr")]
+    if label:
+        lab = norm(label)
+        lab_tokens = lab.split()
+        wanted_exact = f"corr {lab}"
+        for c in corr_candidates:
+            if name_map[c] == wanted_exact:
+                corr_col = c
+                break
+        if corr_col is None:
+            for c in corr_candidates:
+                tail = name_map[c][4:].strip()  # drop "corr"
+                if all(tok in tail for tok in lab_tokens):
+                    corr_col = c
+                    break
+    if corr_col is None and corr_candidates:
+        corr_col = corr_candidates[0]
+
+    missing = []
+    for nm, col in (("row ID", id_col), ("m/z", mz_col), ("retention time", rt_col), ("correlation", corr_col)):
+        if col is None:
+            missing.append(nm)
+    if missing:
+        st.warning(f"⚠️ Could not find required column(s): {', '.join(missing)}.\n"
+                   f"Available columns: {list(df.columns)}")
+        return
+
+    # numeric + clean
+    for c in (mz_col, rt_col, corr_col):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=[mz_col, rt_col, corr_col]).copy()
+    if df.empty:
+        st.warning("⚠️ No rows left after cleaning NaNs in m/z, RT, or correlation.")
+        return
+
+    # ---------- threshold UI ----------
+    st.caption("Filter by absolute correlation")
+    thr = st.slider("Minimum |correlation|", 0.0, 1.0, 0.6, 0.01, key=f"thr_{corr_col}")
+    df_filt = df[df[corr_col].abs() >= thr].copy()
+
+    st.caption(f"Showing {len(df_filt)} of {len(df)} features (|{corr_col}| ≥ {thr:.2f})")
+
+    if df_filt.empty:
+        st.info("Nothing passes the selected threshold.")
+        return
+
+    # -------- plotting --------
+    if not split_pos_neg:
+        fig = px.scatter(
+            df_filt,
+            x=rt_col,
+            y=mz_col,
+            color=corr_col,
+            size=df_filt[corr_col].abs(),
+            opacity=0.75,
+            hover_data=[id_col, rt_col, mz_col, corr_col],
+            color_continuous_scale=px.colors.diverging.RdBu_r,
+            range_color=[-1, 1],
+            title=f"Correlation Plot of MS Features (STOCSY{f' – {label}' if label else ''})"
+        )
+    else:
+        pos = df_filt[df_filt[corr_col] >= 0].copy()
+        neg = df_filt[df_filt[corr_col] < 0].copy()
+        fig = go.Figure()
+        if not pos.empty:
+            fig.add_trace(go.Scatter(
+                x=pos[rt_col], y=pos[mz_col], mode="markers", name="Positive corr",
+                marker=dict(
+                    symbol="circle",
+                    size=(pos[corr_col].abs() * 20).clip(4, 24),
+                    color=pos[corr_col], colorscale="RdBu_r", cmin=-1, cmax=1,
+                    colorbar=dict(title=corr_col),
+                    line=dict(width=1.2, color="white")
+                ),
+                hovertext=pos[id_col] if (id_col and id_col in pos.columns) else None,
+                hovertemplate=(
+                    f"{rt_col}: %{{x}}<br>{mz_col}: %{{y}}<br>{corr_col}: %{{marker.color:.3f}}"
+                    + (f"<br>{id_col}: %{{hovertext}}" if (id_col and id_col in pos.columns) else "")
+                    + "<extra></extra>"
+                )
+            ))
+        if not neg.empty:
+            fig.add_trace(go.Scatter(
+                x=neg[rt_col], y=neg[mz_col], mode="markers", name="Negative corr",
+                marker=dict(
+                    symbol="circle",
+                    size=(neg[corr_col].abs() * 70).clip(4, 24),
+                    color=neg[corr_col], colorscale="RdBu_r", cmin=-1, cmax=1,
+                    showscale=False,
+                    line=dict(width=1.2, color="black")
+                ),
+                hovertext=neg[id_col] if (id_col and id_col in neg.columns) else None,
+                hovertemplate=(
+                    f"{rt_col}: %{{x}}<br>{mz_col}: %{{y}}<br>{corr_col}: %{{marker.color:.3f}}"
+                    + (f"<br>{id_col}: %{{hovertext}}" if (id_col and id_col in neg.columns) else "")
+                    + "<extra></extra>"
+                )
+            ))
+        fig.update_layout(
+            title=f"Correlation Plot of MS Features (STOCSY{f' – {label}' if label else ''})",
+            xaxis_title=rt_col, yaxis_title=mz_col,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            height=520
+        )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # download button
+    html_plot = fig.to_html(full_html=False)
     st.download_button(
-        f"⬇️ Download MS Correlation Plot (HTML) — {label}",
+        f"⬇️ Download MS Correlation Plot (HTML){' — split' if split_pos_neg else ''}",
         data=html_plot,
-        file_name=f"stocsy_correlation_MS_{label}.html",
+        file_name=f"stocsy_correlation_MS{f'_{label}' if label else ''}{'_split' if split_pos_neg else ''}.html",
         mime="text/html"
     )
 
-    #except Exception as e:
-        #st.warning("⚠️ Could not display MS correlation plot.")
-        #st.exception(e)
+
+
 
 # === Original dafdiscovery_process.py functions (cleaned) ===
 
@@ -343,6 +366,30 @@ import os.path
 # =========================
 # 🔍 1. METADATA HANDLING
 # =========================
+def read_table_any(uploaded_file):
+    import pandas as pd
+    # try pandas autodetect
+    try:
+        df = pd.read_csv(uploaded_file, sep=None, engine="python", skipinitialspace=True)
+        if df.shape[1] > 1:
+            df.columns = [str(c).strip() for c in df.columns]
+            return df
+    except Exception:
+        pass
+    # explicit fallbacks (semicolon handles your BioAct.csv; skip bad lines if present)
+    for sep, opts in [(";", {"on_bad_lines": "skip"}), ("\t", {}), (",", {})]:
+        try:
+            df = pd.read_csv(uploaded_file, sep=sep, engine="python", skipinitialspace=True, **opts)
+            df.columns = [str(c).strip() for c in df.columns]
+            return df
+        except Exception:
+            continue
+    # last resort
+    df = pd.read_csv(uploaded_file, sep=",", engine="python", skipinitialspace=True)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
 def analyze_metadata(metadata_df):
     """
     Analyze the Metadata DataFrame and determine:
@@ -409,68 +456,101 @@ import os
 import numpy as np
 import pandas as pd
 
-def _trim_headers(df: pd.DataFrame) -> pd.DataFrame:
-    # standardize headers (string + strip)
-    df = df.copy()
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
-
-def select_by_metadata(df: pd.DataFrame, desired_cols: list[str]) -> pd.DataFrame:
-    """
-    Return df subset with columns in desired_cols.
-    If they are not found at top-level, attempt using df.iloc[:,1:].
-    Raises a clear error if still not found.
-    """
-    df = _trim_headers(df)
-    desired = [str(c).strip() for c in desired_cols]
-
-    # Case A: columns exist as-is
-    if set(desired).issubset(df.columns):
-        return df[desired].copy()
-
-    # Case B: columns exist after dropping the first column
-    if df.shape[1] > 1:
-        df1 = df.iloc[:, 1:].copy()
-        df1.columns = [str(c).strip() for c in df1.columns]
-        if set(desired).issubset(df1.columns):
-            return df1[desired].copy()
-
-    # Nothing matched → build a helpful message
-    raise KeyError(
-        "None (or not all) of the expected columns were found in the BioActivity table.\n"
-        f"Expected: {desired}\n"
-        f"Available top-level: {list(df.columns)}\n"
-        f"Available after dropping first column: {list(df.iloc[:,1:].columns) if df.shape[1] > 1 else 'n/a'}"
-    )
-
-
 def prepare_data_by_option(option, Ordered_Samples,
                            NMR=None, Ordered_NMR_filename=None,
                            MS=None, Ordered_MS_filename=None,
                            BioAct=None, Ordered_BioAct_filename=None):
 
+    import os
+    import numpy as np
+    import pandas as pd
+
+    # --- helpers --------------------------------------------------------------
+    def _col_lookup(df, patterns, must_exist=True):
+        """
+        Find a single column in df whose normalized name matches any of 'patterns'.
+        Normalization: lower, strip, collapse spaces, replace '-' with ' '.
+        """
+        def norm(s):
+            return str(s).lower().strip().replace("-", " ").replace("_", " ")
+        cols_norm = {norm(c): c for c in df.columns}
+        for p in patterns:
+            p_norm = norm(p)
+            # exact
+            if p_norm in cols_norm:
+                return cols_norm[p_norm]
+            # contains
+            for k, orig in cols_norm.items():
+                if p_norm in k:
+                    return orig
+        if must_exist:
+            raise KeyError(f"Could not find any of columns matching {patterns} in: {list(df.columns)}")
+        return None
+
+    def _extract_ms_info(ms_df):
+        """
+        Robustly extract MS metadata columns and standardize names:
+        ['row ID','row m/z','row retention time'].
+        Fallback: take the first three columns if named variants are not found.
+        """
+        if ms_df is None or ms_df.empty:
+            return None, None, None
+
+        # Try robust matching
+        try:
+            col_id = _col_lookup(ms_df, ["row id", "feature id", "id"])
+            col_mz = _col_lookup(ms_df, ["row m/z", "mz", "m z"])
+            col_rt = _col_lookup(ms_df, ["row retention time", "retention time", "rt"])
+            msinfo = ms_df[[col_id, col_mz, col_rt]].copy()
+        except Exception:
+            # Fallback: first 3 columns as given
+            msinfo = ms_df.iloc[:, :3].copy()
+
+        # Standardize column names
+        msinfo.columns = ["row ID", "row m/z", "row retention time"]
+        return msinfo, "row ID", "row m/z"
+
+    # -------------------------------------------------------------------------
+
     ppm = None
     new_axis = None
     MSinfo = None
 
-    if option == 1:  # NMR + MS + BioAct
+    # ===== Option 1: NMR + MS + BioAct ======================================
+    if option == 1:
+        # NMR
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        # MS (keep metadata!)
+        MSinfo, _id_col, _mz_col = _extract_ms_info(MS)
+        MSdata = MS.drop(MS.columns[:3], axis=1)  # drop the first 3 (metadata) columns
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
-        BioActdata = select_by_metadata(BioAct, Ordered_BioAct_filename)
+        # BioAct
+        # Robust BioAct selection
+        BioAct = BioAct.copy()
+        BioAct.columns = [str(c).strip() for c in BioAct.columns]
+
+        missing = [c for c in Ordered_BioAct_filename if c not in BioAct.columns]
+        if missing:
+            raise KeyError(
+                "BioActivity columns listed in metadata not found in the BioAct table.\n"
+                f"Missing: {missing}\n"
+                f"Available: {list(BioAct.columns)[:50]}"
+            )
+
+        BioActdata = BioAct[Ordered_BioAct_filename].copy()
         BioActdata.rename(
             columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples[:len(Ordered_BioAct_filename)])),
             inplace=True
         )
 
+        BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
 
-        # BioAct always last
+        # Merge (BioAct last)
         MergeDF = pd.concat([NMR, MSdata / 1e8, BioActdata], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
@@ -481,16 +561,20 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_MS_BioAct.csv"
 
-    elif option == 2:  # NMR + MS
+    # ===== Option 2: NMR + MS ===============================================
+    elif option == 2:
+        # NMR
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
 
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+        # MS (keep metadata!)
+        MSinfo, _id_col, _mz_col = _extract_ms_info(MS)
+        MSdata = MS.drop(MS.columns[:3], axis=1)
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
+        # Merge
         MergeDF = pd.concat([NMR, MSdata / 1e8], ignore_index=True)
 
         gap = ppm.values[-1] - ppm.values[-2]
@@ -501,7 +585,8 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_MS.csv"
 
-    elif option == 3:  # NMR + BioAct
+    # ===== Option 3: NMR + BioAct ===========================================
+    elif option == 3:
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
@@ -520,23 +605,27 @@ def prepare_data_by_option(option, Ordered_Samples,
 
         filename = "MergeDF_NMR_BioAct.csv"
 
-    elif option == 4:  # MS + BioAct
-        MSdata = MS.drop(["row ID", "row m/z", "row retention time"], axis=1)
-        MSinfo = MS[["row ID", "row m/z", "row retention time"]]
+    # ===== Option 4: MS + BioAct ============================================
+    elif option == 4:
+        # MS (keep metadata!)
+        MSinfo, _id_col, _mz_col = _extract_ms_info(MS)
+        MSdata = MS.drop(MS.columns[:3], axis=1)
         MSdata = MSdata[Ordered_MS_filename]
         MSdata.rename(columns=dict(zip(Ordered_MS_filename, Ordered_Samples)), inplace=True)
 
+        # BioAct
         BioActdata = BioAct.iloc[:, 1:]
         BioActdata = BioActdata[Ordered_BioAct_filename]
         BioActdata.rename(columns=dict(zip(Ordered_BioAct_filename, Ordered_Samples)), inplace=True)
 
         MergeDF = pd.concat([MSdata, BioActdata], ignore_index=True)
 
+        # Construct a simple synthetic axis (index-like) for MS+BioAct
         new_axis = pd.Series(np.arange(0, len(MSdata) + len(BioActdata)))
-
         filename = "MergeDF_MS_BioAct.csv"
 
-    elif option == 5:  # NMR only
+    # ===== Option 5: NMR only ===============================================
+    elif option == 5:
         ppm = NMR["Unnamed: 0"]
         NMR = NMR[Ordered_NMR_filename]
         NMR.rename(columns=dict(zip(Ordered_NMR_filename, Ordered_Samples)), inplace=True)
@@ -548,12 +637,21 @@ def prepare_data_by_option(option, Ordered_Samples,
     else:
         raise ValueError("❌ Invalid option. Option must be between 1 and 5.")
 
+    # ===== Tail (common epilogue) ============================================
     if not os.path.exists('data'):
         os.makedirs('data')
 
+    # Always persist MSinfo if present
+    if MSinfo is not None and isinstance(MSinfo, pd.DataFrame) and not MSinfo.empty:
+        MSinfo.to_csv("data/MSinfo_extracted.csv", index=False)
+
     MergeDF.to_csv(f"data/{filename}", sep=",", index=False)
     print(f"✅ Data merged and saved to 'data/{filename}'")
+    if MSinfo is not None:
+        print("✅ MSinfo (first 3 MS columns) saved to 'data/MSinfo_extracted.csv'")
+
     return MergeDF, new_axis, MSinfo
+
 
 
 # =======================================
@@ -562,7 +660,52 @@ def prepare_data_by_option(option, Ordered_Samples,
 import os
 import pandas as pd
 
-def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", output_prefix="default"):
+def auto_stocsy_driver_run(MergeDF, new_axis, MSinfo, data_in_use, mode="linear", driver_value=None):
+    """
+    Decide the driver automatically (BioAct if present; otherwise use user-supplied),
+    run STOCSY, and return (corr, covar, MSinfo_corr, fig).
+
+    - If BioAct exists in data_in_use: uses the last value of new_axis as driver.
+    - If BioAct is absent: requires driver_value (float) provided by the caller.
+    - fig is only returned (non-None) when NMR is present.
+    """
+    # detect whether we should produce an NMR figure
+    has_nmr = ("NMR" in data_in_use)
+
+    # choose driver and prefix
+    if "BioAct" in data_in_use:
+        # use the last axis value as the BioAct driver
+        try:
+            driver = float(new_axis.values[-1])
+        except Exception:
+            # fallback if new_axis is a Series without .values or indexing issues
+            driver = float(new_axis.iloc[-1]) if hasattr(new_axis, "iloc") else float(new_axis[-1])
+        prefix = "fromBioAct"
+        print(f"🧬 Using BioActivity as driver (value = {driver})")
+    else:
+        # require a manual driver
+        if driver_value is None:
+            raise ValueError("❌ No BioAct available. Please provide a driver_value (ppm or MS index).")
+        driver = float(driver_value)
+        prefix = f"{driver_value}ppm" if has_nmr else f"MS_{driver_value}"
+        print(f"🔍 Using manual driver = {driver}")
+
+    # run STOCSY and export; pass has_nmr to suppress NMR figure when not applicable
+    corr, covar, MSinfo_corr, fig = run_stocsy_and_export(
+        driver=driver,
+        MergeDF=MergeDF,
+        axis=new_axis,
+        MSinfo=MSinfo,
+        mode=mode,
+        output_prefix=prefix,
+        has_nmr=has_nmr
+    )
+
+    return corr, covar, MSinfo_corr, fig
+
+
+def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear",
+                          output_prefix="default", has_nmr=False):
     """
     Runs STOCSY using a selected driver, calculates correlation and covariance,
     maps results to MSinfo (if available), and exports them to a CSV file.
@@ -586,11 +729,20 @@ def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear", out
     covar : np.ndarray
     MSinfo_corr : pd.DataFrame or None
     fig : matplotlib.figure.Figure
+    
+    has_nmr : bool
+    If True, produce/return the Matplotlib NMR STOCSY figure.
+    If False, skip creating/returning the figure (MS tables/exports still occur).
     """
 
     # Run STOCSY
-    corr, covar, fig = STOCSY(float(driver), MergeDF, axis, mode=mode)
+    axis_label = "ppm" if has_nmr else "variable index"
+    corr, covar, fig = STOCSY(float(driver), MergeDF, axis, mode=mode, axis_label=axis_label)
 
+    # If no NMR data, discard the Matplotlib figure
+    if not has_nmr:
+        fig = None
+        
     # Create DataFrames
     corrDF = pd.DataFrame(corr, columns=[f'corr_{output_prefix}'])
     covarDF = pd.DataFrame(covar, columns=[f'covar_{output_prefix}'])
@@ -832,8 +984,13 @@ if metadata_file:
             st.markdown("**📁 BioActivity column headers:** " + ", ".join(bio_data.columns))
 
     # --- Merge and STOCSY ---
-    if st.button("▶️ Run Merge and STOCSY"):
-        if ("NMR" in data_in_use and nmr_data is None) or ("MS" in data_in_use and ms_data is None) or ("BioAct" in data_in_use and bio_data is None):
+    # --- Merge and STOCSY (compute only) ---
+    if st.button("▶️ Run Merge and STOCSY", key="run_auto"):
+        if (
+            ("NMR" in data_in_use and nmr_data is None) or
+            ("MS" in data_in_use and ms_data is None) or
+            ("BioAct" in data_in_use and bio_data is None)
+        ):
             st.warning("⚠️ Please upload all required data files before running.")
         else:
             st.session_state.merged_df, st.session_state.axis, st.session_state.msinfo = prepare_data_by_option(
@@ -843,53 +1000,51 @@ if metadata_file:
                 MS=ms_data, Ordered_MS_filename=ordered_ms_files,
                 BioAct=bio_data, Ordered_BioAct_filename=ordered_bio_files
             )
-
             st.success("✅ Data merged successfully.")
-            st.markdown("📋 Preview of merged dataset:")#.head().to_html(index=False), unsafe_allow_html=True)
             st.markdown(st.session_state.merged_df.head().to_html(index=False), unsafe_allow_html=True)
 
-            st.header("🧪 Step 3: Run STOCSY from BioAct")
-            import traceback
-            try:
-                st.session_state.corr, st.session_state.covar, st.session_state.msinfo_corr, fig = auto_stocsy_driver_run(
-                    MergeDF=st.session_state.merged_df,
-                    new_axis=st.session_state.axis,
-                    MSinfo=st.session_state.msinfo,
-                    data_in_use=data_in_use,
-                    mode="linear",
-                    driver_value=None
-                )
-                st.session_state.fig = fig  # <-- Salva a figura no estado
-                st.success("✅ STOCSY (BioActivity as driver) complete.")
-                if "MS" in data_in_use and st.session_state.msinfo_corr is not None:
-                    show_stocsy_ms_correlation_plot(st.session_state.msinfo_corr, label="BioAct")
+            # Run STOCSY once and SAVE the results in session_state
+            st.session_state.corr, st.session_state.covar, st.session_state.msinfo_corr, st.session_state.fig = auto_stocsy_driver_run(
+                MergeDF=st.session_state.merged_df,
+                new_axis=st.session_state.axis,
+                MSinfo=st.session_state.msinfo,
+                data_in_use=data_in_use,
+                mode="linear",
+                driver_value=None
+            )
+            st.success("✅ STOCSY (BioActivity as driver) complete.")
 
-                # Download do CSV com resultados
-                st.download_button("⬇️ Download Correlation Results (BioAct)",
-                                   data=st.session_state.msinfo_corr.to_csv(index=False),
-                                   file_name="STOCSY_results_bioact.csv",
-                                   mime="text/csv")
+    # --- Render results if present (outside the button) ---
+    if st.session_state.msinfo_corr is not None and "MS" in data_in_use:
+        split_view = st.checkbox("🔀 Split positives / negatives (different markers)",
+                                 value=False, key="split_view_auto")
+        show_stocsy_ms_correlation_plot(
+            st.session_state.msinfo_corr,
+            label="fromBioAct",
+            split_pos_neg=split_view
+        )
 
-                # Exibição da figura do STOCSY e botão de download
-                if fig:
-                    st.pyplot(fig)
-                    html_plot = mpld3.fig_to_html(fig)
-                    st.download_button("⬇️ Download STOCSY Plot (HTML)",
-                                       data=html_plot,
-                                       file_name="stocsy_plot_bioact.html",
-                                       mime="text/html")
-                    # Caminho para o PDF salvo automaticamente
-                    pdf_path = f"images/stocsy_from_BioAct_linear.pdf"
-                    if os.path.exists(pdf_path):
-                        with open(pdf_path, "rb") as f:
-                            st.download_button("⬇️ Download STOCSY Plot (PDF)",
-                                               data=f,
-                                               file_name="stocsy_plot_bioact.pdf",
-                                               mime="application/pdf")
+        st.download_button(
+            "⬇️ Download Correlation Results (BioAct)",
+            data=st.session_state.msinfo_corr.to_csv(index=False),
+            file_name="STOCSY_results_bioact.csv",
+            mime="text/csv",
+            key="dl_corr_bioact"
+        )
 
-            except Exception as e:
-                st.error(f"❌ STOCSY with BioAct failed:\n\n{traceback.format_exc()}")
-                
+    # Show STOCSY figure (only if NMR exists)
+    if ("NMR" in data_in_use) and (st.session_state.get("fig") is not None):
+        st.pyplot(st.session_state.fig)
+        # Optional: HTML download of the STOCSY figure
+        html_plot = mpld3.fig_to_html(st.session_state.fig)
+        st.download_button(
+            "⬇️ Download STOCSY Plot (HTML)",
+            data=html_plot,
+            file_name="stocsy_plot_bioact.html",
+            mime="text/html",
+            key="dl_stocsy_html"
+        )
+    
 
     if st.session_state.corr is not None and "NMR" in data_in_use and isinstance(st.session_state.axis, pd.Series):
         st.subheader("🧲 STOCSY Projection (NMR) from BioActivity")
@@ -964,10 +1119,12 @@ Use this feature when you want to force the correlation analysis of a specific s
                         axis=st.session_state.axis,
                         MSinfo=st.session_state.msinfo,
                         mode="linear",
-                        output_prefix=prefix
+                        output_prefix=prefix,
+                        has_nmr=("NMR" in data_in_use) and (driver_type == "NMR (ppm)")
                     )
 
-                    if fig_manual:
+                    # Only show a Matplotlib plot if this was an NMR run
+                    if ("NMR" in data_in_use) and (driver_type == "NMR (ppm)") and fig_manual:
                         st.pyplot(fig_manual)
                         html_manual = mpld3.fig_to_html(fig_manual)
                         st.download_button("⬇️ Download STOCSY Manual Plot (HTML)",
@@ -1002,5 +1159,4 @@ Use this feature when you want to force the correlation analysis of a specific s
                 except Exception as e:
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
-
 
