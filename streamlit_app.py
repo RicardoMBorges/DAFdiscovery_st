@@ -262,7 +262,11 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label=None, split_pos_neg=False
 
     # ---------- threshold UI ----------
     st.caption("Filter by absolute correlation")
-    thr = st.slider("Minimum |correlation|", 0.0, 1.0, 0.6, 0.01, key=f"thr_{corr_col}")
+    # Build a unique slider key per plot instance (avoids cross-plot collisions)
+    import re as _re
+    suffix = f"_{_re.sub(r'[^\\w]+', '_', str(label))}" if label else ""
+    thr = st.slider("Minimum |correlation|", 0.0, 1.0, 0.6, 0.01, key=f"thr_{corr_col}{suffix}")
+
     df_filt = df[df[corr_col].abs() >= thr].copy()
 
     st.caption(f"Showing {len(df_filt)} of {len(df)} features (|{corr_col}| ≥ {thr:.2f})")
@@ -659,50 +663,6 @@ def prepare_data_by_option(option, Ordered_Samples,
 # =======================================
 import os
 import pandas as pd
-
-def auto_stocsy_driver_run(MergeDF, new_axis, MSinfo, data_in_use, mode="linear", driver_value=None):
-    """
-    Decide the driver automatically (BioAct if present; otherwise use user-supplied),
-    run STOCSY, and return (corr, covar, MSinfo_corr, fig).
-
-    - If BioAct exists in data_in_use: uses the last value of new_axis as driver.
-    - If BioAct is absent: requires driver_value (float) provided by the caller.
-    - fig is only returned (non-None) when NMR is present.
-    """
-    # detect whether we should produce an NMR figure
-    has_nmr = ("NMR" in data_in_use)
-
-    # choose driver and prefix
-    if "BioAct" in data_in_use:
-        # use the last axis value as the BioAct driver
-        try:
-            driver = float(new_axis.values[-1])
-        except Exception:
-            # fallback if new_axis is a Series without .values or indexing issues
-            driver = float(new_axis.iloc[-1]) if hasattr(new_axis, "iloc") else float(new_axis[-1])
-        prefix = "fromBioAct"
-        print(f"🧬 Using BioActivity as driver (value = {driver})")
-    else:
-        # require a manual driver
-        if driver_value is None:
-            raise ValueError("❌ No BioAct available. Please provide a driver_value (ppm or MS index).")
-        driver = float(driver_value)
-        prefix = f"{driver_value}ppm" if has_nmr else f"MS_{driver_value}"
-        print(f"🔍 Using manual driver = {driver}")
-
-    # run STOCSY and export; pass has_nmr to suppress NMR figure when not applicable
-    corr, covar, MSinfo_corr, fig = run_stocsy_and_export(
-        driver=driver,
-        MergeDF=MergeDF,
-        axis=new_axis,
-        MSinfo=MSinfo,
-        mode=mode,
-        output_prefix=prefix,
-        has_nmr=has_nmr
-    )
-
-    return corr, covar, MSinfo_corr, fig
-
 
 def run_stocsy_and_export(driver, MergeDF, axis, MSinfo=None, mode="linear",
                           output_prefix="default", has_nmr=False):
@@ -1102,7 +1062,7 @@ Use this feature when you want to force the correlation analysis of a specific s
         driver_input = st.text_input("Enter the driver value (e.g., 2.54 for ppm, or 102 for MS index):", "")
 
         run_manual = st.button("▶️ Run STOCSY with Manual Driver")
-
+        
         if run_manual:
             if driver_input.strip() == "":
                 st.warning("⚠️ Enter a valid value for the driver.")
@@ -1123,40 +1083,60 @@ Use this feature when you want to force the correlation analysis of a specific s
                         has_nmr=("NMR" in data_in_use) and (driver_type == "NMR (ppm)")
                     )
 
-                    # Only show a Matplotlib plot if this was an NMR run
-                    if ("NMR" in data_in_use) and (driver_type == "NMR (ppm)") and fig_manual:
-                        st.pyplot(fig_manual)
-                        html_manual = mpld3.fig_to_html(fig_manual)
-                        st.download_button("⬇️ Download STOCSY Manual Plot (HTML)",
-                                        data=html_manual,
-                                        file_name=f"stocsy_manual_{prefix}.html",
-                                        mime="text/html",
-                                        key=f"download_html_manual_{prefix}")
+                    # ✅ Persist results only — no rendering here
+                    st.session_state["manual_results"] = {
+                        "msinfo_corr": msinfo_corr_,
+                        "fig_manual": fig_manual if (("NMR" in data_in_use) and (driver_type == "NMR (ppm)")) else None,
+                        "prefix": prefix,
+                        "driver_type": driver_type,
+                        "driver_value": driver_value,
+                    }
 
-                        # PDF path
-                        pdf_manual_path = f"images/stocsy_from_{driver_value}_{'linear'}.pdf"
-                        if os.path.exists(pdf_manual_path):
-                            with open(pdf_manual_path, "rb") as f:
-                                st.download_button("⬇️ Download STOCSY Manual Plot (PDF)",
-                                                data=f,
-                                                file_name=f"stocsy_manual_{prefix}.pdf",
-                                                mime="application/pdf",
-                                                key=f"download_pdf_manual_{prefix}")
+                    st.success("✅ STOCSY with manual driver completed.")
+                except Exception as e:
+                    st.error("❌ Error running STOCSY with manual driver.")
+                    st.exception(e)
 
-                        # CSV results
-                        st.download_button("⬇️ Download STOCSY Manual CSV Results",
-                                        data=msinfo_corr_.to_csv(index=False),
-                                        file_name=f"stocsy_results_{prefix}.csv",
-                                        mime="text/csv",
-                                        key=f"download_csv_manual_{prefix}")
 
-                        # ✅ ADDED: Scatter Plot of MS Features
-                        if "MS" in data_in_use and msinfo_corr_ is not None:
-                            show_stocsy_ms_correlation_plot(msinfo_corr_, label=prefix)
-
-                        st.success("✅ STOCSY with manual driver completed.")
 
                 except Exception as e:
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
 
+        # --- Render persisted manual results (safe with Streamlit reruns) ---
+        manual_res = st.session_state.get("manual_results")
+        if manual_res:
+            # 1) NMR figure (only if this was an NMR manual run)
+            if ("NMR" in data_in_use) and (manual_res["driver_type"] == "NMR (ppm)") and manual_res["fig_manual"]:
+                st.pyplot(manual_res["fig_manual"])
+                html_manual = mpld3.fig_to_html(manual_res["fig_manual"])
+                st.download_button("⬇️ Download STOCSY Manual Plot (HTML)",
+                                   data=html_manual,
+                                   file_name=f"stocsy_manual_{manual_res['prefix']}.html",
+                                   mime="text/html",
+                                   key=f"download_html_manual_{manual_res['prefix']}")
+
+                pdf_manual_path = f"images/stocsy_from_{manual_res['driver_value']}_{'linear'}.pdf"
+                if os.path.exists(pdf_manual_path):
+                    with open(pdf_manual_path, "rb") as f:
+                        st.download_button("⬇️ Download STOCSY Manual Plot (PDF)",
+                                           data=f,
+                                           file_name=f"stocsy_manual_{manual_res['prefix']}.pdf",
+                                           mime="application/pdf",
+                                           key=f"download_pdf_manual_{manual_res['prefix']}")
+
+            # 2) CSV (if available)
+            if manual_res["msinfo_corr"] is not None:
+                st.download_button("⬇️ Download STOCSY Manual CSV Results",
+                                   data=manual_res["msinfo_corr"].to_csv(index=False),
+                                   file_name=f"stocsy_results_{manual_res['prefix']}.csv",
+                                   mime="text/csv",
+                                   key=f"download_csv_manual_{manual_res['prefix']}")
+
+            # 3) MS scatter (works for manual MS driver; updates smoothly with slider)
+            if ("MS" in data_in_use) and (manual_res["msinfo_corr"] is not None):
+                show_stocsy_ms_correlation_plot(
+                    manual_res["msinfo_corr"],
+                    label=manual_res["prefix"],  # used for a unique slider key below
+                    split_pos_neg=False
+                )
