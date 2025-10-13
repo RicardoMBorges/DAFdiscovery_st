@@ -896,7 +896,7 @@ st.markdown("""
 <center>
 <p><strong>Try it using our Mock Data!</strong> </p>
 <a href="https://github.com/RicardoMBorges/DAFdiscovery_st/blob/main/mock_data_DAFdiscovery.zip" target="_blank">
-    <img src="https://img.shields.io/badge/%20Open%20Tutorial-blue?style=for-the-badge&logo=readthedocs" alt="Mock Data">
+    <img src="https://img.shields.io/badge/%20Mock%20Data-blue?style=for-the-badge&logo=readthedocs" alt="Mock Data">
 </a>
 </center>
 """, unsafe_allow_html=True)
