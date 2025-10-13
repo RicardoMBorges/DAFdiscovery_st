@@ -179,57 +179,111 @@ def STOCSY(target, X, rt_values, mode="linear"):
 # Função para exibir o scatter plot de MS STOCSY
 import plotly.express as px
 
-def show_stocsy_ms_correlation_plot(msinfo_corr, label="BioAct"):
+def show_stocsy_ms_correlation_plot(msinfo_corr, label=None):
     """
-    Display interactive Plotly scatter plot for MS STOCSY correlation results.
+    Robust MS STOCSY scatter plot (RT × m/z, colored by correlation).
+    - Tolerates different casings and separators in column names.
+    - Prefers 'corr_<label>' if label is provided; otherwise first 'corr_' column.
+    """
+    import numpy as np
+    import pandas as pd
+    import plotly.express as px
+    import streamlit as st
+    import re
 
-    Parameters
-    ----------
-    msinfo_corr : pd.DataFrame
-        Correlation and covariance information merged with the MS feature table.
-    label : str
-        Suffix used in the correlation column (e.g., 'BioAct', '2.54ppm')
-    """
+    st.subheader("💥 Correlation Plot of MS Features")
+
+    if not isinstance(msinfo_corr, pd.DataFrame) or msinfo_corr.empty:
+        st.warning("No MSinfo/correlation data to plot.")
+        return
+
+    df = msinfo_corr.copy()
+
+    # -------- helpers to normalize names & find columns ----------------------
+    def norm(s: str) -> str:
+        s = str(s)
+        s = s.lower()
+        s = re.sub(r"[^\w]+", " ", s)   # replace non-alnum with spaces
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    name_map = {c: norm(c) for c in df.columns}
+
+    def pick_col(predicate, blacklist=None):
+        for orig, nm in name_map.items():
+            if blacklist and any(b in nm for b in blacklist):
+                continue
+            if predicate(nm):
+                return orig
+        return None
+
+    # ---- find ID / m/z / RT columns (metadata) ------------------------------
+    id_col = pick_col(lambda nm: ("row" in nm and "id" in nm) or nm == "id")
+    mz_col = pick_col(lambda nm: ("mz" in nm or "m z" in nm), blacklist=["corr", "covar"])
+    rt_col = pick_col(lambda nm:
+                      ("retention" in nm and "time" in nm) or
+                      nm == "rt" or
+                      nm.startswith("rt "),
+                      blacklist=["corr", "covar"])
+
+    # ---- find correlation column --------------------------------------------
+    corr_col = None
+    corr_candidates = [c for c in df.columns if name_map[c].startswith("corr ")]
+    if label:
+        wanted = f"corr {norm(label)}"
+        for c in corr_candidates:
+            if name_map[c] == wanted:
+                corr_col = c
+                break
+    if corr_col is None and corr_candidates:
+        corr_col = corr_candidates[0]
+
+    # ---- sanity checks -------------------------------------------------------
+    missing = []
+    for nm, col in (("row ID", id_col), ("m/z", mz_col), ("retention time", rt_col), ("correlation", corr_col)):
+        if col is None:
+            missing.append(nm)
+    if missing:
+        st.warning(f"⚠️ Could not find required column(s): {', '.join(missing)}.\n"
+                   f"Available columns: {list(df.columns)}")
+        return
+
+    # ---- ensure numeric ------------------------------------------------------
+    for c in (mz_col, rt_col, corr_col):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    df = df.dropna(subset=[mz_col, rt_col, corr_col]).copy()
+    if df.empty:
+        st.warning("⚠️ No rows left after cleaning NaNs in m/z, RT, or correlation.")
+        return
+
+    # ---- build scatter -------------------------------------------------------
     try:
-        st.subheader("💥 Correlation Plot of MS Features")
-
-        df_msplot = msinfo_corr.copy()
-        df_msplot.columns = [col.replace(" ", "_").lower() for col in df_msplot.columns]
-
-        id_col = [col for col in df_msplot.columns if "row ID" in col][0]
-        rt_col = [col for col in df_msplot.columns if "retention" in col][0]
-        mz_col = [col for col in df_msplot.columns if "m/z" in col or "mz" in col][0]
-        corr_col = [col for col in df_msplot.columns if f"corr_{label.lower()}" in col or "corr_" in col][0]
-
-        corr_plotMS = px.scatter(
-            df_msplot,
+        fig = px.scatter(
+            df,
             x=rt_col,
             y=mz_col,
             color=corr_col,
-            size=np.abs(df_msplot[corr_col])**2,
-            opacity=0.7,
+            size=(df[corr_col].abs() ** 2),
+            opacity=0.75,
             hover_data=[id_col, rt_col, mz_col, corr_col],
             color_continuous_scale=px.colors.sequential.Jet,
-            title=f"Correlation Plot of MS Features (STOCSY – {label})"
+            title=f"Correlation Plot of MS Features (STOCSY{f' – {label}' if label else ''})"
         )
+        fig.update_layout(font=dict(size=16), height=520)
+        st.plotly_chart(fig, use_container_width=True)
 
-        corr_plotMS.update_layout(
-            font_color="black",
-            title_font_color="black",
-            font=dict(size=16),
-            height=500
+        html_plot = fig.to_html(full_html=False)
+        st.download_button(
+            f"⬇️ Download MS Correlation Plot (HTML){f' — {label}' if label else ''}",
+            data=html_plot,
+            file_name=f"stocsy_correlation_MS{f'_{label}' if label else ''}.html",
+            mime="text/html"
         )
-
-        st.plotly_chart(corr_plotMS, use_container_width=True)
-
-        html_plot = corr_plotMS.to_html(full_html=False)
-        st.download_button(f"⬇️ Download MS Correlation Plot (HTML) — {label}",
-                           data=html_plot,
-                           file_name=f"stocsy_correlation_MS_{label}.html",
-                           mime="text/html")
     except Exception as e:
         st.warning("⚠️ Could not display MS correlation plot.")
         st.exception(e)
+
 
 # === Original dafdiscovery_process.py functions (cleaned) ===
 
@@ -835,7 +889,7 @@ if metadata_file:
                 st.session_state.fig = fig  # <-- Salva a figura no estado
                 st.success("✅ STOCSY (BioActivity as driver) complete.")
                 if "MS" in data_in_use and st.session_state.msinfo_corr is not None:
-                    show_stocsy_ms_correlation_plot(st.session_state.msinfo_corr, label="BioAct")
+                    show_stocsy_ms_correlation_plot(st.session_state.msinfo_corr, label="fromBioAct")
 
                 # Download do CSV com resultados
                 st.download_button("⬇️ Download Correlation Results (BioAct)",
@@ -975,6 +1029,7 @@ Use this feature when you want to force the correlation analysis of a specific s
                 except Exception as e:
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
+
 
 
 
