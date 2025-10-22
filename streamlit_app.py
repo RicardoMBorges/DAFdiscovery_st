@@ -849,8 +849,6 @@ logo = Image.open("static/dafDISCOVERY_icon.png")
 # Display the logo in the sidebar or header
 st.sidebar.image(logo, width=300)
 
-
-
 # PayPal donate button
 st.sidebar.markdown("""
 <hr>
@@ -886,7 +884,6 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 MockData_URL = "https://github.com/RicardoMBorges/DAFdiscovery_st/tree/main/mock_data_DAFdiscovery"
-
 st.sidebar.markdown("""
 <hr>
 <center>
@@ -1178,3 +1175,4 @@ pipeline = Image.open("static/pipeline.png")
 # Display the pipeline in the sidebar or header
 
 st.image(pipeline, width=900)
+
