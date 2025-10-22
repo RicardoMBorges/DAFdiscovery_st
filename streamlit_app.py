@@ -908,9 +908,9 @@ st.markdown("""
   
 VIDEO_URL = "https://youtu.be/8XEeGcwKeuc"
 try:
-    st.sidebar.link_button("Video", VIDEO_URL)
+    st.link_button("Video", VIDEO_URL)
 except Exception:
-    st.sidebar.markdown(
+    st.markdown(
         f'<a href="{VIDEO_URL}" target="_blank">'
         '<button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #ddd; cursor:pointer;">▶️ Video</button>'
         '</a>',
