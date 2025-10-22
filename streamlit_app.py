@@ -905,6 +905,19 @@ st.markdown("""
   
 """)
 
+  
+VIDEO_URL = "https://youtu.be/8XEeGcwKeuc"
+try:
+    st.sidebar.link_button("Video", VIDEO_URL)
+except Exception:
+    st.sidebar.markdown(
+        f'<a href="{VIDEO_URL}" target="_blank">'
+        '<button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #ddd; cursor:pointer;">▶️ Video</button>'
+        '</a>',
+        unsafe_allow_html=True,
+    )
+
+
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
 metadata_file = st.file_uploader("Upload your Metadata CSV file:", type="csv")
