@@ -264,8 +264,13 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label=None, split_pos_neg=False
     st.caption("Filter by absolute correlation")
     # Build a unique slider key per plot instance (avoids cross-plot collisions)
     import re as _re
-    suffix = f"_{_re.sub(r'[^\\w]+', '_', str(label))}" if label else ""
+    if label:
+        cleaned_label = _re.sub(r"[^\w]+", "_", str(label))
+        suffix = f"_{cleaned_label}"
+    else:
+        suffix = ""
     thr = st.slider("Minimum |correlation|", 0.0, 1.0, 0.6, 0.01, key=f"thr_{corr_col}{suffix}")
+
 
     df_filt = df[df[corr_col].abs() >= thr].copy()
 
@@ -1129,11 +1134,6 @@ Use this feature when you want to force the correlation analysis of a specific s
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
 
-
-
-                except Exception as e:
-                    st.error("❌ Error running STOCSY with manual driver.")
-                    st.exception(e)
 
         # --- Render persisted manual results (safe with Streamlit reruns) ---
         manual_res = st.session_state.get("manual_results")
