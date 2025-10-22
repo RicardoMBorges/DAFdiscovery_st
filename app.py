@@ -1172,3 +1172,8 @@ Use this feature when you want to force the correlation analysis of a specific s
                     label=manual_res["prefix"],  # used for a unique slider key below
                     split_pos_neg=False
                 )
+
+# Load the pipeline DAFdiscovery
+pipeline = Image.open("static/pipeline.png")
+# Display the pipeline in the sidebar or header
+st.image(pipeline, width=900)
