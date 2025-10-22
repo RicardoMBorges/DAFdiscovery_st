@@ -885,7 +885,7 @@ st.sidebar.markdown("""
 </center>
 """, unsafe_allow_html=True)
 
-MockData_URL = "https://github.com/RicardoMBorges/DAFdiscovery_st"
+MockData_URL = "https://github.com/RicardoMBorges/DAFdiscovery_st/tree/main/mock_data_DAFdiscovery"
 
 st.sidebar.markdown("""
 <hr>
