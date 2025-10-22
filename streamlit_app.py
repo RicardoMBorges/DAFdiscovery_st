@@ -1176,4 +1176,5 @@ Use this feature when you want to force the correlation analysis of a specific s
 # Load the pipeline DAFdiscovery
 pipeline = Image.open("static/pipeline.png")
 # Display the pipeline in the sidebar or header
+
 st.image(pipeline, width=900)
