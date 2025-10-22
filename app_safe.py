@@ -350,11 +350,6 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label=None, split_pos_neg=False
 
 # === Original dafdiscovery_process.py functions (cleaned) ===
 
-"""
-Author: Ricardo M. Borges (and collaborators)
-License: MIT
-"""
-
 # === Dependencies ===
 import numpy as np
 import pandas as pd
@@ -839,13 +834,20 @@ for key in ["merged_df", "axis", "msinfo", "corr", "covar", "msinfo_corr"]:
 st.set_page_config(layout="wide")
 st.title("DAFdiscovery: NMR–MS–BioActivity Integration")
 
-# Load the logo
+# Load the logo LAABio
+logo_LAABio = Image.open("static/LAABio.png")
+# Display the logo in the sidebar or header
+st.sidebar.image(logo_LAABio, width=300)
+
+# Load the logo DAFdiscovery
 logo = Image.open("static/dafDISCOVERY_icon.png")
 # Display the logo in the sidebar or header
-st.image(logo, width=250)
+st.sidebar.image(logo, width=300)
+
+
 
 # PayPal donate button
-st.markdown("""
+st.sidebar.markdown("""
 <hr>
 <center>
 <p>To support the app development:</p>
@@ -855,13 +857,11 @@ st.markdown("""
 </center>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-  
-""")
+st.sidebar.markdown("""---""")
 #st.stop()
 
 # Citation
-st.markdown("""
+st.sidebar.markdown("""
 📖 **Please Cite:**  
 Borges RM, das Neves Costa F, Chagas FO, *et al.*  
 **Data Fusion-based Discovery (DAFdiscovery) pipeline to aid compound annotation and bioactive compound discovery across diverse spectral data.**  
@@ -870,7 +870,7 @@ Borges RM, das Neves Costa F, Chagas FO, *et al.*
 """)
 
 # Tutorial
-st.markdown("""
+st.sidebar.markdown("""
 <hr>
 <center>
 <p><strong>Need help?</strong> Read the tutorial:</p>
@@ -880,22 +880,42 @@ st.markdown("""
 </center>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-  
-""")
+MockData_URL = "https://github.com/RicardoMBorges/DAFdiscovery_st"
 
-  
+st.sidebar.markdown("""
+<hr>
+<center>
+<a href=MockData_URL target="_blank">
+    <img src="https://img.shields.io/badge/%20Mock%20Data-blue?style=for-the-badge&logo=readthedocs" alt="Mock Data">
+</a>
+</center>
+""", unsafe_allow_html=True)
+
 VIDEO_URL = "https://youtu.be/8XEeGcwKeuc"
-try:
-    st.link_button("Video", VIDEO_URL)
-except Exception:
-    st.markdown(
-        f'<a href="{VIDEO_URL}" target="_blank">'
-        '<button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #ddd; cursor:pointer;">▶️ Video</button>'
-        '</a>',
-        unsafe_allow_html=True,
-    )
 
+st.sidebar.markdown("""
+<hr>
+<center>
+<a href=VIDEO_URL target="_blank">
+    <img src="https://img.shields.io/badge/%20VIDEO-blue?style=for-the-badge&logo=readthedocs" alt="VIDEO">
+</a>
+</center>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
+
+st.sidebar.markdown(
+    """
+    Developed by **Ricardo M Borges** and **LAABio-IPPN-UFRJ**  
+    contact: ricardo_mborges@yahoo.com.br  
+
+    🔗 Details: [GitHub repository](https://github.com/RicardoMBorges/DAFdiscovery_st)
+
+    Check also: [pyMETAflow](https://github.com/RicardoMBorges/pyMETAflowHPLC_st)
+    
+    Check also: [TLC2Chrom](https://tlc2chrom.streamlit.app/)
+    """
+)
 
 # --- Upload Metadata ---
 st.header("📁 Step 1: Upload Metadata")
@@ -1152,3 +1172,8 @@ Use this feature when you want to force the correlation analysis of a specific s
                     label=manual_res["prefix"],  # used for a unique slider key below
                     split_pos_neg=False
                 )
+
+# Load the pipeline DAFdiscovery
+pipeline = Image.open("static/pipeline.png")
+# Display the pipeline in the sidebar or header
+st.image(pipeline, width=900)
