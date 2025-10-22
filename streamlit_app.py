@@ -893,7 +893,7 @@ st.sidebar.markdown("""
 </center>
 """, unsafe_allow_html=True)
 
-VIDEO_URL = "https://youtu.be/1mqymNaGHHs"
+VIDEO_URL = "https://www.youtube.com/watch?v=1mqymNaGHHs"
 
 st.sidebar.markdown("""
 <hr>
@@ -1175,5 +1175,6 @@ pipeline = Image.open("static/pipeline.png")
 # Display the pipeline in the sidebar or header
 
 st.image(pipeline, width=900)
+
 
 
