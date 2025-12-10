@@ -1134,12 +1134,6 @@ Use this feature when you want to force the correlation analysis of a specific s
                     st.error("❌ Error running STOCSY with manual driver.")
                     st.exception(e)
 
-
-
-                except Exception as e:
-                    st.error("❌ Error running STOCSY with manual driver.")
-                    st.exception(e)
-
         # --- Render persisted manual results (safe with Streamlit reruns) ---
         manual_res = st.session_state.get("manual_results")
         if manual_res:
@@ -1183,4 +1177,5 @@ pipeline = Image.open("static/pipeline.png")
 # Display the pipeline in the sidebar or header
 
 st.image(pipeline, width=900)
+
 
