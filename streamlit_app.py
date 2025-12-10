@@ -375,7 +375,7 @@ def read_table_any(uploaded_file):
     try:
         df = pd.read_csv(uploaded_file, sep=None, engine="python", skipinitialspace=True)
         if df.shape[1] > 1:
-            df.columns = [str(c).strip() for c in df.columns]
+            df.columns = [str(c).strip().replace("\ufeff", "") for c in df.columns]
             return df
     except Exception:
         pass
@@ -383,14 +383,15 @@ def read_table_any(uploaded_file):
     for sep, opts in [(";", {"on_bad_lines": "skip"}), ("\t", {}), (",", {})]:
         try:
             df = pd.read_csv(uploaded_file, sep=sep, engine="python", skipinitialspace=True, **opts)
-            df.columns = [str(c).strip() for c in df.columns]
+            df.columns = [str(c).strip().replace("\ufeff", "") for c in df.columns]
             return df
         except Exception:
             continue
     # last resort
     df = pd.read_csv(uploaded_file, sep=",", engine="python", skipinitialspace=True)
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [str(c).strip().replace("\ufeff", "") for c in df.columns]
     return df
+
 
 
 def analyze_metadata(metadata_df):
@@ -938,6 +939,14 @@ if metadata_file:
         data_in_use
     ) = analyze_metadata(metadata_df)
 
+    if option is None or data_in_use is None:
+        st.error(
+            "❌ Could not interpret the metadata.\n\n"
+            "The file must contain at least a **'Samples'** column and one or more of:\n"
+            " - `NMR_filename`\n - `MS_filename`\n - `BioAct_filename`"
+        )
+        st.stop()
+	
     st.markdown(f"**Detected Option**: {option} — Using: {', '.join(data_in_use)}")
 
     # --- Upload data files based on metadata ---
@@ -1174,6 +1183,7 @@ pipeline = Image.open("static/pipeline.png")
 # Display the pipeline in the sidebar or header
 
 st.image(pipeline, width=900)
+
 
 
 
