@@ -261,15 +261,16 @@ def show_stocsy_ms_correlation_plot(msinfo_corr, label=None, split_pos_neg=False
         return
 
     # ---------- threshold UI ----------
-    st.caption("Filter by absolute correlation")
-    # Build a unique slider key per plot instance (avoids cross-plot collisions)
-    import re as _re
-    if label:
-        cleaned_label = _re.sub(r"[^\w]+", "_", str(label))
-        suffix = f"_{cleaned_label}"
-    else:
-        suffix = ""
-    thr = st.slider("Minimum |correlation|", 0.0, 1.0, 0.6, 0.01, key=f"thr_{corr_col}{suffix}")
+	st.caption("Filter by absolute correlation")
+	# Build a unique slider key per plot instance (avoids cross-plot collisions)
+	import re as _re
+	if label:
+	    cleaned_label = _re.sub(r"[^\w]+", "_", str(label))
+	    suffix = f"_{cleaned_label}"
+	else:
+	    suffix = ""
+	thr = st.slider("Minimum |correlation|", 0.0, 1.0, 0.6, 0.01, key=f"thr_{corr_col}{suffix}")
+
 
 
     df_filt = df[df[corr_col].abs() >= thr].copy()
@@ -1175,6 +1176,7 @@ pipeline = Image.open("static/pipeline.png")
 # Display the pipeline in the sidebar or header
 
 st.image(pipeline, width=900)
+
 
 
 
